@@ -1,0 +1,2 @@
+-- PhysicsService — Server Script (Sprint 2 implementation)
+-- Thin runner: requires the service module and calls Init

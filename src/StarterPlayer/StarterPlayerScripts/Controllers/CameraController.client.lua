@@ -1,0 +1,2 @@
+-- CameraController — Local Script (Sprint 5 implementation)
+-- Thin runner: waits for character/profile, then initialises the module

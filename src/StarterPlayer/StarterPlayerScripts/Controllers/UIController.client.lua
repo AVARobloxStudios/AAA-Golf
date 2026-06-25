@@ -1,0 +1,2 @@
+-- UIController — Local Script (Sprint 4 implementation)
+-- Thin runner: waits for character/profile, then initialises the module

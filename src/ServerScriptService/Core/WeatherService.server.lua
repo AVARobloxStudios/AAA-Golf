@@ -1,0 +1,2 @@
+-- WeatherService — Server Script (Sprint 5 implementation)
+-- Thin runner: requires the service module and calls Init

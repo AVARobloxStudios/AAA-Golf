@@ -1,0 +1,2 @@
+-- LeaderboardService — Server Script (Sprint 4 implementation)
+-- Thin runner: requires the service module and calls Init

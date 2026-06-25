@@ -1,0 +1,14 @@
+# Roblox Studio
+*.rbxl
+*.rbxlx
+
+# Wally (installed packages are checked in for now; change if using CI caching)
+# Packages/
+# ServerPackages/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json

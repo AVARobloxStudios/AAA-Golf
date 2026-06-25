@@ -1,0 +1,11 @@
+[package]
+name = "aaa-golf/aaa-golf"
+version = "0.1.0"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+
+[dependencies]
+ReplicaService = "loleris/replicaservice@^1.0.0"
+
+[server-dependencies]
+ProfileService = "loleris/profileservice@^1.0.0"

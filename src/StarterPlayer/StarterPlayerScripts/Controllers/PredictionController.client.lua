@@ -1,0 +1,2 @@
+-- PredictionController — Local Script (Sprint 3 implementation)
+-- Thin runner: waits for character/profile, then initialises the module

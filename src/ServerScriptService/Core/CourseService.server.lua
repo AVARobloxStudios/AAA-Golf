@@ -1,0 +1,2 @@
+-- CourseService — Server Script (Sprint 3/4 implementation)
+-- Thin runner: requires the service module and calls Init

@@ -1,0 +1,2 @@
+-- ScoringService — Server Script (Sprint 3 implementation)
+-- Thin runner: requires the service module and calls Init

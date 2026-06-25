@@ -1,0 +1,57 @@
+{
+	"name": "AAA-Golf",
+	"tree": {
+		"$className": "DataModel",
+
+		"ReplicatedStorage": {
+			"$path": "src/ReplicatedStorage",
+			"Packages": {
+				"$path": "Packages"
+			}
+		},
+
+		"ServerScriptService": {
+			"$path": "src/ServerScriptService",
+			"Packages": {
+				"$path": "ServerPackages"
+			}
+		},
+
+		"StarterPlayer": {
+			"$path": "src/StarterPlayer"
+		},
+
+		"StarterGui": {
+			"$path": "src/StarterGui"
+		},
+
+		"Workspace": {
+			"$className": "Workspace",
+			"$properties": {
+				"StreamingEnabled": true,
+				"FilteringEnabled": true
+			},
+			"Courses": {
+				"$path": "src/Workspace/Courses"
+			},
+			"ActiveBalls": {
+				"$className": "Folder"
+			},
+			"SpawnPoints": {
+				"$className": "Folder"
+			},
+			"Cameras": {
+				"$className": "Folder"
+			},
+			"Map": {
+				"$className": "Folder"
+			},
+			"CurrentWeather": {
+				"$className": "StringValue",
+				"$properties": {
+					"Value": "Clear"
+				}
+			}
+		}
+	}
+}

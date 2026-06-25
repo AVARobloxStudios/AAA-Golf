@@ -1,0 +1,3 @@
+-- EmoteController — Local Script (Sprint stub implementation)
+-- Thin runner: waits for character/profile, then initialises the module
+-- Stub in VS — Phase 2

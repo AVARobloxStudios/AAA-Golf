@@ -1,0 +1,2 @@
+-- SessionLockManager — Server Script (Sprint 1 implementation)
+-- Thin runner: requires the service module and calls Init

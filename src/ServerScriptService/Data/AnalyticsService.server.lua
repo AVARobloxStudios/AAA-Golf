@@ -1,0 +1,3 @@
+-- AnalyticsService — Server Script (Sprint stub implementation)
+-- Thin runner: requires the service module and calls Init
+-- Stub in VS — telemetry pipeline

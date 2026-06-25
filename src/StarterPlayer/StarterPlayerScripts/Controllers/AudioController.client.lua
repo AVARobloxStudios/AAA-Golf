@@ -1,0 +1,2 @@
+-- AudioController — Local Script (Sprint 7 implementation)
+-- Thin runner: waits for character/profile, then initialises the module

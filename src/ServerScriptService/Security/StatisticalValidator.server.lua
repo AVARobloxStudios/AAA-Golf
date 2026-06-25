@@ -1,0 +1,2 @@
+-- StatisticalValidator — Server Script (Sprint 6 implementation)
+-- Thin runner: requires the service module and calls Init

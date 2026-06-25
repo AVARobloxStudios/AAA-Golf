@@ -1,0 +1,3 @@
+-- MatchmakingService — Server Script (Sprint stub implementation)
+-- Thin runner: requires the service module and calls Init
+-- Stub in VS — lobby routing only

@@ -1,0 +1,3 @@
+-- ShopService — Server Script (Sprint stub implementation)
+-- Thin runner: requires the service module and calls Init
+-- Stub in VS — Phase 2
