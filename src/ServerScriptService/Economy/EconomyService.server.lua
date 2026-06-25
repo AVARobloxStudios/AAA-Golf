@@ -1,2 +1,6 @@
--- EconomyService — Server Script (Sprint 1 implementation)
--- Thin runner: requires the service module and calls Init
+--!strict
+-- EconomyService runner — thin Script per TDD §3.1
+
+local ServerScriptService = game:GetService("ServerScriptService")
+local EconomyService = require(ServerScriptService.Modules.EconomyService)
+EconomyService:Init()

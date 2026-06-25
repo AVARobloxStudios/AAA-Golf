@@ -377,4 +377,56 @@ function PlayerDataService:FlushNow(player: Player)
 	DataStoreBridge:FlushNow(player.UserId)
 end
 
+-- ── DevProduct receipt dedup — TDD §11.2 ──────────────────────────────────
+
+-- Returns true if this receipt id was already processed (idempotency check).
+function PlayerDataService:HasPurchaseId(player: Player, purchaseId: string): boolean
+	local profile = profiles[player.UserId]
+	assert(profile, "[PlayerDataService] HasPurchaseId: no profile for " .. player.Name)
+	return profile.Data.purchaseIds[purchaseId] == true
+end
+
+-- Records a processed receipt id and immediately flushes — receipts require
+-- durable persistence before PurchaseGranted is returned to Roblox.
+function PlayerDataService:AddPurchaseId(player: Player, purchaseId: string)
+	local profile = profiles[player.UserId]
+	assert(profile, "[PlayerDataService] AddPurchaseId: no profile for " .. player.Name)
+	profile.Data.purchaseIds[purchaseId] = true
+	DataStoreBridge:FlushNow(player.UserId)
+end
+
+-- ── Daily reward state ─────────────────────────────────────────────────────
+
+-- Returns a snapshot of the three daily-reward fields so EconomyService can
+-- compute the new streak without touching profile.Data directly.
+function PlayerDataService:GetDailyRewardState(
+	player: Player
+): { date: string, time: number, streak: number }
+	local profile = profiles[player.UserId]
+	assert(profile, "[PlayerDataService] GetDailyRewardState: no profile for " .. player.Name)
+	local data = profile.Data
+	return {
+		date   = data.lastDailyRewardDate :: string,
+		time   = data.lastDailyRewardTime :: number,
+		streak = data.dailyStreak         :: number,
+	}
+end
+
+-- Writes the three daily-reward fields after EconomyService resolves the new
+-- streak. Queues a batched save — daily rewards are not receipt-critical.
+function PlayerDataService:SetDailyRewardState(
+	player: Player,
+	date: string,
+	time: number,
+	streak: number
+)
+	local profile = profiles[player.UserId]
+	assert(profile, "[PlayerDataService] SetDailyRewardState: no profile for " .. player.Name)
+	local data               = profile.Data
+	data.lastDailyRewardDate = date
+	data.lastDailyRewardTime = time
+	data.dailyStreak         = streak
+	DataStoreBridge:QueueWrite(player.UserId)
+end
+
 return PlayerDataService
