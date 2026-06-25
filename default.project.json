@@ -5,16 +5,30 @@
 
 		"ReplicatedStorage": {
 			"$path": "src/ReplicatedStorage",
-			"Packages": {
-				"$path": "Packages"
+			"Network": {
+				"$className": "Folder",
+				"RemoteEvents": {
+					"$className": "Folder",
+					"AdminBroadcast":     { "$className": "RemoteEvent" },
+					"BallPositionStream": { "$className": "UnreliableRemoteEvent" },
+					"GameBus":            { "$className": "RemoteEvent" },
+					"HoleComplete":       { "$className": "RemoteEvent" },
+					"MatchComplete":      { "$className": "RemoteEvent" },
+					"ScoreboardUpdate":   { "$className": "RemoteEvent" },
+					"WeatherChanged":     { "$className": "RemoteEvent" }
+				},
+				"RemoteFunctions": {
+					"$className": "Folder",
+					"GetCourseData":    { "$className": "RemoteFunction" },
+					"GetPlayerProfile": { "$className": "RemoteFunction" },
+					"PingCheck":        { "$className": "RemoteFunction" },
+					"ValidateShopItem": { "$className": "RemoteFunction" }
+				}
 			}
 		},
 
 		"ServerScriptService": {
-			"$path": "src/ServerScriptService",
-			"Packages": {
-				"$path": "ServerPackages"
-			}
+			"$path": "src/ServerScriptService"
 		},
 
 		"StarterPlayer": {
@@ -33,9 +47,6 @@
 			},
 			"Courses": {
 				"$path": "src/Workspace/Courses"
-			},
-			"ActiveBalls": {
-				"$className": "Folder"
 			},
 			"SpawnPoints": {
 				"$className": "Folder"

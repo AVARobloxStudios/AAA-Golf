@@ -5,13 +5,63 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local Constants = require(ReplicatedStorage.Shared.Modules.Constants)
 local DataStoreBridge = require(script.Parent.DataStoreBridge)
 
-local ProfileService = require(ServerScriptService.Packages.ProfileService)
-local ReplicaService = require(ReplicatedStorage.Packages.ReplicaService)
+-- ── Studio mock — remove once real packages are available ──────────────────
+-- Only active when RunService:IsStudio(). Data is in-memory only; nothing
+-- persists. Production (non-Studio) still routes through the real packages.
+
+local function _deepCopy(src: any): any
+	if type(src) ~= "table" then return src end
+	local copy: { [any]: any } = {}
+	for k, v in pairs(src) do
+		copy[k] = _deepCopy(v)
+	end
+	return copy
+end
+
+local _MockProfileService = {}
+function _MockProfileService.GetProfileStore(_storeName: string, template: any): any
+	return {
+		LoadProfileAsync = function(_self: any, _key: string, _handler: any): any
+			return {
+				Data      = _deepCopy(template),
+				Reconcile = function() end,
+				Release   = function() end,
+				Save      = function() end,
+			}
+		end,
+	}
+end
+
+local _MockReplicaService = {}
+function _MockReplicaService.NewClassToken(_name: string): any
+	return {}
+end
+function _MockReplicaService.NewReplica(_config: any): any
+	return {
+		Data     = _config.Data or {},
+		SetValue = function() end,
+		Destroy  = function() end,
+	}
+end
+
+-- ── Package resolution ─────────────────────────────────────────────────────
+
+local ProfileService: any
+local ReplicaService: any
+if RunService:IsStudio() then
+	warn("[PlayerDataService] STUDIO MOCK — ProfileService + ReplicaService are in-memory only. Data will NOT persist.")
+	ProfileService = _MockProfileService
+	ReplicaService = _MockReplicaService
+else
+	ProfileService = require(ServerScriptService.Packages.ProfileService)
+	ReplicaService = require(ReplicatedStorage.Packages.ReplicaService)
+end
 
 -- XP required per level (flat rate — no formula in TDD v1.0; tunable here).
 local XP_PER_LEVEL = 500
