@@ -1,2 +1,6 @@
--- ScoringService — Server Script (Sprint 3 implementation)
--- Thin runner: requires the service module and calls Init
+--!strict
+-- ScoringService runner — thin Script per TDD §3.1
+
+local ServerScriptService = game:GetService("ServerScriptService")
+local ScoringService = require(ServerScriptService.Modules.ScoringService)
+ScoringService:Init({})
