@@ -1,2 +1,7 @@
--- DataStoreBridge — Server Script (Sprint 1 implementation)
--- Thin runner: requires the service module and calls Init
+--!strict
+-- DataStoreBridge runner — thin Script per TDD §3.1
+-- Initialises DataStoreBridge (heartbeat + BindToClose) at server start.
+
+local ServerScriptService = game:GetService("ServerScriptService")
+local DataStoreBridge = require(ServerScriptService.Modules.DataStoreBridge)
+DataStoreBridge:Init()
