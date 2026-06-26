@@ -4,7 +4,8 @@
 		"$className": "DataModel",
 
 		"ReplicatedStorage": {
-			"$path": "src/ReplicatedStorage",
+			"Assets": { "$path": "src/ReplicatedStorage/Assets" },
+			"Shared": { "$path": "src/ReplicatedStorage/Shared" },
 			"Network": {
 				"$className": "Folder",
 				"RemoteEvents": {
