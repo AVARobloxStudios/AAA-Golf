@@ -53,7 +53,10 @@ PhysicsService.__index = PhysicsService
 -- ── Private ────────────────────────────────────────────────────────────────
 
 -- Sends current position + velocity to all clients on the loss-tolerant channel.
+-- Guard: skip when no clients are connected (server-only tests, pre-join window)
+-- so the engine does not warn about an UnreliableRemoteEvent with no listeners.
 function PhysicsService:_broadcastPosition(ball: ActiveBall)
+	if #Players:GetPlayers() == 0 then return end
 	BallPositionStream:FireAllClients({
 		ballId = ball.id,
 		pos    = ball.physState.pos,

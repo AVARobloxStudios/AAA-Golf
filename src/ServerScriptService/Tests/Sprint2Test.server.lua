@@ -160,6 +160,11 @@ local function runTests(player: Player)
 		end
 	end)
 
+	-- Signal to concurrent server test scripts (e.g. Sprint5Test) that the
+	-- initial pool-state assertions above are complete.  Sprint5Test polls this
+	-- flag before leasing any ball via SwingIntent dispatch.
+	_G.Sprint2PoolChecked = true
+
 	-- ── 8: Fire a simulated swing ─────────────────────────────────────────
 	-- Launch from Y = 500 so the ball has ~3–5 s of visible flight under
 	-- gravity + drag before CheckLanding triggers at Y ≤ BALL_RADIUS.

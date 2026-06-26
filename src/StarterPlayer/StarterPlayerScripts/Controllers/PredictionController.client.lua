@@ -1,2 +1,9 @@
--- PredictionController — Local Script (Sprint 3 implementation)
--- Thin runner: waits for character/profile, then initialises the module
+--!strict
+-- PredictionController — LocalScript thin runner (Sprint 7)
+-- All logic lives in PredictionControllerModule so it can be required and tested
+-- independently by Sprint7ClientTest.
+
+local PredictionControllerModule =
+	require(script.Parent.Parent.Modules.PredictionControllerModule)
+
+PredictionControllerModule:Init()

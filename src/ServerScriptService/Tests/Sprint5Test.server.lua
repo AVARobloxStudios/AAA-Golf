@@ -369,6 +369,15 @@ local function runTests(player: Player)
 		assert(type(EventBusHandler._dispatch) == "function")
 	end)
 
+	-- Guard: wait for Sprint2's initial BallPool assertions (all-IDLE, all-invisible)
+	-- to complete before leasing a ball via SwingIntent.  The two test suites run
+	-- concurrently; without this barrier, Sprint5's SimulateSwing call races
+	-- Sprint2's pool-state checks and causes them to see a non-IDLE ball.
+	-- Timeout of 5 s is generous; Sprint2 sets the flag in well under 1 s once
+	-- BallPool is initialised.  If Sprint2Test is absent the flag never appears
+	-- and we wait the full 5 s then proceed — acceptable for a solo test run.
+	pollUntil(function() return _G.Sprint2PoolChecked == true end, 5)
+
 	do
 		-- Fresh round for HoleReady and SwingIntent routing checks.
 		GameService:AbortRound(player)
