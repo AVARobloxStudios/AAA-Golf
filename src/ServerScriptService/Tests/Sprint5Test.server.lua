@@ -3,16 +3,20 @@
 -- Run in Studio Play Solo mode. No API Services required.
 -- Requires Rojo sync so that Workspace.Courses and ReplicatedStorage.Network exist.
 --
--- What is tested (38 runtime checks):
---   GameService (34 checks): module interface, GetState/GetCurrentHoleId/
+-- What is tested (46 runtime checks):
+--   GameService (38 checks): module interface, GetState/GetCurrentHoleId/
 --     GetTeePosition/GetPinPosition, StartRound state progression,
 --     OnHoleReady, OnSwingFired, _onBallLanded, _advanceFromScoreReveal,
 --     hole-completion via ball-near-pin, next-hole loading, ROUND_COMPLETE
 --     with session cleanup, AbortRound, multi-shot same-hole retention,
 --     error paths for out-of-order calls, duplicate StartRound guard.
+--   EventBusHandler (8 checks): module interface, HoleReady routing,
+--     SwingIntent routing (drives state to BALL_IN_FLIGHT via _dispatch),
+--     unknown eventType guard, invalid payload guard.
 --
 -- All state transitions tested synchronously: _advanceFromScoreReveal and
 -- _enterRoundComplete are called directly so tests never need task.wait.
+-- EventBusHandler routing tests call _dispatch directly (no live client needed).
 
 local Players             = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
@@ -20,6 +24,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local GameService        = require(ServerScriptService.Modules.GameService)
 local ScoringService     = require(ServerScriptService.Modules.ScoringService)
 local PlayerDataService  = require(ServerScriptService.Modules.PlayerDataService)
+local EventBusHandler    = require(ServerScriptService.Modules.EventBusHandler)
 
 local TAG = "[Sprint5Test]"
 
@@ -344,6 +349,80 @@ local function runTests(player: Player)
 		assert(not ok, "expected error for OnHoleReady with no session")
 	end)
 
+	-- ── EventBusHandler routing ───────────────────────────────────────────
+	-- Routing is tested by calling _dispatch directly so no live client is needed.
+	-- Two dispatch tests share a do-block round; four others need no session.
+
+	check("EventBusHandler: module loads", function()
+		assert(type(EventBusHandler) == "table", "expected table")
+	end)
+
+	check("EventBusHandler: Init function exists", function()
+		assert(type(EventBusHandler.Init) == "function")
+	end)
+
+	check("EventBusHandler: Destroy function exists", function()
+		assert(type(EventBusHandler.Destroy) == "function")
+	end)
+
+	check("EventBusHandler: _dispatch function exists", function()
+		assert(type(EventBusHandler._dispatch) == "function")
+	end)
+
+	do
+		-- Fresh round for HoleReady and SwingIntent routing checks.
+		GameService:AbortRound(player)
+		GameService:StartRound(player)  -- state = TEE_OFF
+
+		check("EventBusHandler HoleReady route: state becomes SWING", function()
+			EventBusHandler:_dispatch(player, {
+				eventType = "HoleReady",
+				payload   = {},
+				timestamp = os.time(),
+			})
+			local state = GameService:GetState(player)
+			assert(state == S_SWING, ("expected SWING, got %q"):format(state))
+		end)
+
+		-- Player is now in SWING state; dispatch SwingIntent to drive BALL_IN_FLIGHT.
+		check("EventBusHandler SwingIntent route: state becomes BALL_IN_FLIGHT", function()
+			EventBusHandler:_dispatch(player, {
+				eventType = "SwingIntent",
+				payload   = {
+					aimVector = Vector3.new(0, 0, -1),
+					power     = 0.5,
+					accuracy  = 0.0,
+					clubId    = "DRIVER",
+					timestamp = os.time(),
+				},
+				timestamp = os.time(),
+			})
+			local state = GameService:GetState(player)
+			assert(state == S_BALL_IN_FLIGHT, ("expected BALL_IN_FLIGHT, got %q"):format(state))
+		end)
+
+		GameService:AbortRound(player)  -- cleanup; ball flight no-ops on landing after Destroy
+	end
+
+	check("EventBusHandler: unknown eventType is warned and ignored", function()
+		-- No session required; the dispatch table lookup happens before any service call.
+		EventBusHandler:_dispatch(player, {
+			eventType = "UNKNOWN_EVENT_TYPE",
+			payload   = {},
+			timestamp = os.time(),
+		})
+		-- Reaching here means _dispatch did not propagate an error.
+	end)
+
+	check("EventBusHandler SwingIntent: invalid payload does not crash handler", function()
+		-- aimVector = nil fails validation; handler warns and returns without touching services.
+		EventBusHandler:_dispatch(player, {
+			eventType = "SwingIntent",
+			payload   = { aimVector = nil, power = 0.5, accuracy = 0.0, clubId = "DRIVER" },
+			timestamp = os.time(),
+		})
+	end)
+
 	-- ── Teardown ──────────────────────────────────────────────────────────
 	-- _onBallLanded schedules task.delay(SCORE_REVEAL_DELAY, _advanceFromScoreReveal)
 	-- calls that cannot be cancelled. Clearing sessions here makes every pending
@@ -354,6 +433,7 @@ local function runTests(player: Player)
 
 	GameService:Destroy()               -- clears _sessions table; pending callbacks no-op
 	ScoringService:Destroy()            -- clears ScoringService session table
+	EventBusHandler:Destroy()           -- disconnects GameBus.OnServerEvent listener
 
 	-- ── Summary ────────────────────────────────────────────────────────────
 
