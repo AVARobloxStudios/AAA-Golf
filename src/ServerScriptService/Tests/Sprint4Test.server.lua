@@ -9,6 +9,9 @@
 --   CourseLoader (23 checks): module API, ActivateHole priority assignments,
 --     first/last hole boundary behaviour, transitions, DeactivateHole,
 --     GetHoleFolder, error paths.
+--   CourseService (28 checks): module API, GetCourseId, GetCourseData shape,
+--     GetHoleMeta for all 9 holes, GetNextHole boundaries, ActivateHole,
+--     error paths, RF behavioral check.
 --
 -- No player required. All tests are synchronous.
 -- HazardResolver tests create temporary Parts (destroyed after use).
@@ -16,10 +19,13 @@
 -- hole folders — minor side effects, no impact on gameplay in Studio.
 
 local CollectionService   = game:GetService("CollectionService")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local Workspace           = game:GetService("Workspace")
 
 local HazardResolver = require(ServerScriptService.Modules.HazardResolver)
 local CourseLoader   = require(ServerScriptService.Modules.CourseLoader)
+local CourseService  = require(ServerScriptService.Modules.CourseService)
 
 local TAG = "[Sprint4Test]"
 
@@ -542,6 +548,216 @@ check("DeactivateHole: non-existent holeId → error", function()
 		CourseLoader:DeactivateHole(COURSE_ID, "Hole_99")
 	end)
 	assert(not ok, "expected error for non-existent hole")
+end)
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- CourseService smoke tests
+-- ════════════════════════════════════════════════════════════════════════════
+
+local CS_COURSE_ID = "course_1"
+local CS_FOLDER    = "Course_1_SunnybrookMeadows"  -- Workspace folder name
+
+-- Helper: read the StreamingPriority attribute set by CourseLoader on a hole folder.
+local function csGetPriority(holeId: string): number
+	local folder = CourseLoader:GetHoleFolder(CS_FOLDER, holeId)
+	if not folder then return -1 end
+	local val = folder:GetAttribute("StreamingPriority")
+	if type(val) == "number" then return val end
+	return -1
+end
+
+-- ── Module API ─────────────────────────────────────────────────────────────
+
+check("CourseService: module loads without error", function()
+	assert(CourseService ~= nil)
+end)
+
+check("CourseService: Init runs without error", function()
+	CourseService:Init({})
+end)
+
+check("CourseService: Init is idempotent (second call safe)", function()
+	CourseService:Init({})  -- must not error or duplicate work
+end)
+
+check("CourseService: GetCourseId method exists", function()
+	assert(type(CourseService.GetCourseId) == "function", "GetCourseId missing")
+end)
+
+check("CourseService: GetCourseData method exists", function()
+	assert(type(CourseService.GetCourseData) == "function", "GetCourseData missing")
+end)
+
+check("CourseService: GetHoleMeta method exists", function()
+	assert(type(CourseService.GetHoleMeta) == "function", "GetHoleMeta missing")
+end)
+
+check("CourseService: GetNextHole method exists", function()
+	assert(type(CourseService.GetNextHole) == "function", "GetNextHole missing")
+end)
+
+check("CourseService: ActivateHole method exists", function()
+	assert(type(CourseService.ActivateHole) == "function", "ActivateHole missing")
+end)
+
+-- ── GetCourseId ────────────────────────────────────────────────────────────
+
+check("GetCourseId: returns 'course_1' after Init", function()
+	local id = CourseService:GetCourseId()
+	assert(id == CS_COURSE_ID,
+		("expected 'course_1', got %q"):format(id))
+end)
+
+-- ── GetCourseData ──────────────────────────────────────────────────────────
+
+check("GetCourseData('course_1'): returns a table", function()
+	local data = CourseService:GetCourseData(CS_COURSE_ID)
+	assert(type(data) == "table", "expected a table")
+end)
+
+check("GetCourseData: id, displayName, and totalHoles are correct", function()
+	local data = CourseService:GetCourseData(CS_COURSE_ID)
+	assert(data.id == CS_COURSE_ID,
+		("expected id='course_1', got %q"):format(tostring(data.id)))
+	assert(type(data.displayName) == "string" and #data.displayName > 0,
+		"displayName must be a non-empty string")
+	assert(data.totalHoles == 9,
+		("expected totalHoles=9, got %d"):format(data.totalHoles))
+end)
+
+check("GetCourseData: holes table contains exactly 9 entries", function()
+	local data = CourseService:GetCourseData(CS_COURSE_ID)
+	local count = 0
+	for _ in pairs(data.holes) do count += 1 end
+	assert(count == 9, ("expected 9 holes, got %d"):format(count))
+end)
+
+-- ── GetHoleMeta ────────────────────────────────────────────────────────────
+
+check("GetHoleMeta('Hole_01'): holeNumber = 1", function()
+	local meta = CourseService:GetHoleMeta("Hole_01")
+	assert(meta.holeNumber == 1,
+		("expected holeNumber=1, got %d"):format(meta.holeNumber))
+end)
+
+check("GetHoleMeta('Hole_09'): holeNumber = 9", function()
+	local meta = CourseService:GetHoleMeta("Hole_09")
+	assert(meta.holeNumber == 9,
+		("expected holeNumber=9, got %d"):format(meta.holeNumber))
+end)
+
+check("GetHoleMeta: all 9 holes have par between 3 and 5", function()
+	for n = 1, 9 do
+		local holeId = ("Hole_%02d"):format(n)
+		local meta = CourseService:GetHoleMeta(holeId)
+		assert(meta.par >= 3 and meta.par <= 5,
+			("Hole %d: par %d is out of range [3,5]"):format(n, meta.par))
+	end
+end)
+
+check("GetHoleMeta: teePosition and pinPosition are Vector3", function()
+	local meta = CourseService:GetHoleMeta("Hole_01")
+	assert(typeof(meta.teePosition) == "Vector3",
+		("teePosition must be Vector3, got %s"):format(typeof(meta.teePosition)))
+	assert(typeof(meta.pinPosition) == "Vector3",
+		("pinPosition must be Vector3, got %s"):format(typeof(meta.pinPosition)))
+end)
+
+-- ── GetNextHole ────────────────────────────────────────────────────────────
+
+check("GetNextHole('Hole_01') → 'Hole_02'", function()
+	local next = CourseService:GetNextHole("Hole_01")
+	assert(next == "Hole_02",
+		("expected 'Hole_02', got %s"):format(tostring(next)))
+end)
+
+check("GetNextHole('Hole_08') → 'Hole_09'", function()
+	local next = CourseService:GetNextHole("Hole_08")
+	assert(next == "Hole_09",
+		("expected 'Hole_09', got %s"):format(tostring(next)))
+end)
+
+check("GetNextHole('Hole_09') → nil (last hole in 9-hole course)", function()
+	local next = CourseService:GetNextHole("Hole_09")
+	assert(next == nil,
+		("expected nil for last hole, got %s"):format(tostring(next)))
+end)
+
+-- ── ActivateHole ───────────────────────────────────────────────────────────
+
+check("ActivateHole('Hole_01'): Workspace hole folder gets StreamingPriority 10", function()
+	CourseService:ActivateHole("Hole_01")
+	local p = csGetPriority("Hole_01")
+	assert(p == 10, ("expected StreamingPriority=10, got %d"):format(p))
+end)
+
+check("ActivateHole('Hole_01'): next hole (Hole_02) gets StreamingPriority 5", function()
+	local p = csGetPriority("Hole_02")
+	assert(p == 5, ("expected StreamingPriority=5 on Hole_02, got %d"):format(p))
+end)
+
+check("ActivateHole('Hole_03'): previous hole (Hole_02) released to 0", function()
+	CourseService:ActivateHole("Hole_03")
+	local prev = csGetPriority("Hole_02")
+	assert(prev == 0, ("expected 0 on released Hole_02, got %d"):format(prev))
+	local curr = csGetPriority("Hole_03")
+	assert(curr == 10, ("expected 10 on current Hole_03, got %d"):format(curr))
+end)
+
+-- Workspace Metadata Value reading is deferred until course assets are placed.
+-- CourseService falls back to stub par values and positions until then.
+
+-- ── Error paths ────────────────────────────────────────────────────────────
+
+check("GetCourseData: invalid courseId → error", function()
+	local ok = pcall(function()
+		CourseService:GetCourseData("course_invalid")
+	end)
+	assert(not ok, "expected error for unknown courseId")
+end)
+
+check("GetHoleMeta: invalid holeId → error", function()
+	local ok = pcall(function()
+		CourseService:GetHoleMeta("Hole_99")
+	end)
+	assert(not ok, "expected error for unknown holeId")
+end)
+
+check("GetNextHole: malformed holeId → error", function()
+	local ok = pcall(function()
+		CourseService:GetNextHole("NotAHole")
+	end)
+	assert(not ok, "expected error for malformed holeId")
+end)
+
+check("ActivateHole: invalid holeId → error", function()
+	local ok = pcall(function()
+		CourseService:ActivateHole("Hole_99")
+	end)
+	assert(not ok, "expected error for unknown holeId")
+end)
+
+-- ── GetCourseData RemoteFunction ───────────────────────────────────────────
+
+check("GetCourseData RF: RemoteFunction exists in ReplicatedStorage.Network", function()
+	local network  = ReplicatedStorage:FindFirstChild("Network")
+	local rfFolder = network and (network :: Instance):FindFirstChild("RemoteFunctions")
+	local rf = rfFolder and (rfFolder :: Instance):FindFirstChild("GetCourseData")
+	assert(rf ~= nil, "GetCourseData RemoteFunction not found — check default.project.json")
+end)
+
+check("GetCourseData RF: handler returns a valid CourseRecord for 'course_1'", function()
+	-- OnServerInvoke is write-only; verify the handler's behaviour indirectly by
+	-- calling the same function the handler delegates to and asserting the contract.
+	local data = CourseService:GetCourseData(CS_COURSE_ID)
+	assert(type(data) == "table",
+		"GetCourseData must return a table")
+	assert(data.id == CS_COURSE_ID,
+		("expected id=%q, got %q"):format(CS_COURSE_ID, tostring(data.id)))
+	assert(data.totalHoles == 9,
+		("expected totalHoles=9, got %s"):format(tostring(data.totalHoles)))
+	assert(type(data.holes) == "table",
+		"expected holes field to be a table")
 end)
 
 -- ── Summary ────────────────────────────────────────────────────────────────

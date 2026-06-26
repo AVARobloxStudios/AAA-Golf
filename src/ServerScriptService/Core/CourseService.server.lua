@@ -1,2 +1,7 @@
--- CourseService — Server Script (Sprint 3/4 implementation)
--- Thin runner: requires the service module and calls Init
+--!strict
+-- CourseService runner — thin Script per TDD §3.1
+-- Builds hole metadata cache and wires the GetCourseData RemoteFunction.
+
+local ServerScriptService = game:GetService("ServerScriptService")
+local CourseService = require(ServerScriptService.Modules.CourseService)
+CourseService:Init({})
