@@ -13,6 +13,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Types             = require(ReplicatedStorage.Shared.Modules.Types)
 local PhysicsIntegrator = require(ServerScriptService.Modules.PhysicsIntegrator)
 local BallPool          = require(ServerScriptService.Modules.BallPool)
+local HazardResolver    = require(ServerScriptService.Modules.HazardResolver)
 
 -- ── Network ────────────────────────────────────────────────────────────────
 
@@ -40,8 +41,9 @@ type ActiveBall = {
 
 -- ── Module state ───────────────────────────────────────────────────────────
 
-local _activeBalls:   { [number]: ActiveBall? } = {}  -- keyed by player.UserId
-local _heartbeatConn: RBXScriptConnection?      = nil
+local _activeBalls:    { [number]: ActiveBall? }              = {}   -- keyed by player.UserId
+local _heartbeatConn:  RBXScriptConnection?                   = nil
+local _landingCallback: ((Player, Vector3, string) -> ())?    = nil
 
 -- ── Module ─────────────────────────────────────────────────────────────────
 
@@ -59,30 +61,32 @@ function PhysicsService:_broadcastPosition(ball: ActiveBall)
 	})
 end
 
--- Finalizes a ball's flight: marks it SETTLED, fires BallResolved to all
--- clients, then releases the model back to BallPool.
+-- Finalizes a ball's flight: classifies the landing surface, fires BallResolved
+-- to all clients, notifies GameService via the registered callback, then returns
+-- the ball to BallPool.
 -- Called only from OnHeartbeat after CheckLanding returns true.
--- Sprint 3 will insert HazardResolver + ScoringService:CommitStroke here.
 function PhysicsService:_finalizeFlight(ball: ActiveBall)
-	-- Briefly mark SETTLED before BallPool:Release resets StateValue to IDLE.
-	-- Sprint 3 code will read SETTLED to trigger hole-decision logic.
 	local sv = ball.model:FindFirstChild("StateValue") :: StringValue?
 	if sv then
 		sv.Value = "SETTLED"
 	end
 
-	-- Notify all clients: authoritative landing position + full trajectory.
-	-- landingSurface is UNKNOWN until HazardResolver is wired in Sprint 3.
+	local surface = HazardResolver:GetSurface(ball.physState.pos)
+
 	GameBus:FireAllClients({
 		eventType = "BallResolved",
 		payload   = {
 			ballId         = ball.id,
 			trajectory     = ball.trajectory,
 			landingPos     = ball.physState.pos,
-			landingSurface = "UNKNOWN",
+			landingSurface = surface,
 		},
 		timestamp = os.time(),
 	})
+
+	if _landingCallback then
+		_landingCallback(ball.player, ball.physState.pos, surface)
+	end
 
 	BallPool:Release(ball.model)             -- resets StateValue → IDLE, OwnerValue → nil
 	_activeBalls[ball.player.UserId] = nil
@@ -131,6 +135,7 @@ function PhysicsService:Init(_dependencies: { [string]: any })
 	-- PhysicsService owns its dependencies' lifecycle.
 	PhysicsIntegrator:Init({})
 	BallPool:Init({})
+	HazardResolver:Init({})
 
 	-- Release any in-flight ball if a player disconnects mid-shot.
 	Players.PlayerRemoving:Connect(function(player: Player)
@@ -153,6 +158,7 @@ function PhysicsService:Destroy()
 		_heartbeatConn:Disconnect()
 		_heartbeatConn = nil
 	end
+	_landingCallback = nil
 
 	-- Release all active balls before tearing down the pool.
 	for _, ball in pairs(_activeBalls) do
@@ -230,6 +236,13 @@ function PhysicsService:SimulateSwing(
 	} :: ActiveBall
 
 	-- The Heartbeat loop drives the simulation from here.
+end
+
+-- Registers a callback invoked when each ball settles, before BallPool:Release.
+-- GameService uses this to drive BALL_IN_FLIGHT → SCORE_REVEAL.
+-- Only one callback is supported; a second call overwrites the first.
+function PhysicsService:SetLandingCallback(fn: (Player, Vector3, string) -> ())
+	_landingCallback = fn
 end
 
 -- Forwards a wind update from WeatherService to PhysicsIntegrator.
