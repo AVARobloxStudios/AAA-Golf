@@ -275,12 +275,21 @@ function AimControllerModule:Init()
 			warn("[AimController] HUD ScreenGui not available within 15 s")
 			return
 		end
-		local aimFrame = (hud :: Instance):WaitForChild("AimIndicator", 15) :: Frame?
-		if not aimFrame then
-			warn("[AimController] AimIndicator frame not available within 15 s")
-			return
+		local found    = (hud :: Instance):WaitForChild("AimIndicator", 15)
+		local aimFrame: Frame
+		if found then
+			aimFrame = found :: Frame
+		else
+			-- StarterGui frame not yet replicated; create a transparent fallback.
+			local fallback = Instance.new("Frame")
+			fallback.Name                   = "AimIndicator"
+			fallback.Size                   = UDim2.new(1, 0, 1, 0)
+			fallback.BackgroundTransparency = 1
+			fallback.Parent                 = hud
+			table.insert(_createdInstances, fallback)
+			aimFrame = fallback
 		end
-		_buildUI(aimFrame :: Frame)
+		_buildUI(aimFrame)
 		_updateAimUI()
 		print("[AimController] UI ready")
 	end)

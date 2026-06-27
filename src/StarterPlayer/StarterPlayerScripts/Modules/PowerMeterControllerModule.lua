@@ -248,12 +248,21 @@ function PowerMeterControllerModule:Init()
 			warn("[PowerMeterController] HUD ScreenGui not available within 15 s")
 			return
 		end
-		local pmFrame = (hud :: Instance):WaitForChild("PowerMeter", 15) :: Frame?
-		if not pmFrame then
-			warn("[PowerMeterController] PowerMeter frame not available within 15 s")
-			return
+		local found   = (hud :: Instance):WaitForChild("PowerMeter", 15)
+		local pmFrame: Frame
+		if found then
+			pmFrame = found :: Frame
+		else
+			-- StarterGui frame not yet replicated; create a transparent fallback.
+			local fallback = Instance.new("Frame")
+			fallback.Name                   = "PowerMeter"
+			fallback.Size                   = UDim2.new(1, 0, 1, 0)
+			fallback.BackgroundTransparency = 1
+			fallback.Parent                 = hud
+			table.insert(_createdInstances, fallback)
+			pmFrame = fallback
 		end
-		_buildUI(pmFrame :: Frame)
+		_buildUI(pmFrame)
 		_updatePowerUI()
 		print("[PowerMeterController] UI ready")
 	end)
