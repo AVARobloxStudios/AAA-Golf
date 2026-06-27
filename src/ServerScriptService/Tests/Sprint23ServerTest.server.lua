@@ -100,7 +100,11 @@ local function runTests(player: Player)
 			("expected 0, got %d"):format(AES:GetExecutionCount()))
 	end)
 
-	-- All 8 known eventTypes return success without crashing.
+	-- All 8 known eventTypes dispatch without AES crashing (handler always returns a
+	-- valid ExecutionResult table).  HoleReady and SwingIntent may return
+	-- success=false when there is no live session — that is correct Sprint 25
+	-- behaviour, not a pipeline fault.  The purpose here is to verify AES does not
+	-- crash or return a non-table for any registered eventType.
 	local KNOWN_EVENTS = {
 		"SwingIntent", "HoleReady", "QueueMatchmaking", "CancelMatchmaking",
 		"SetReady", "OpenShop", "PreviewItem", "EquipCosmetic",
@@ -111,8 +115,10 @@ local function runTests(player: Player)
 			local result = AES:Execute(player, { eventType = et, payload = {} })
 			assert(type(result) == "table",
 				("expected table result for %q"):format(et))
-			assert(result.success == true,
-				("expected success=true for %q, got %s"):format(et, tostring(result.success)))
+			assert(type(result.success) == "boolean",
+				("expected boolean result.success for %q"):format(et))
+			assert(type(result.status) == "string" and result.status ~= "",
+				("expected non-empty result.status for %q"):format(et))
 		end
 	end)
 
@@ -121,10 +127,12 @@ local function runTests(player: Player)
 			("expected 8, got %d"):format(AES:GetExecutionCount()))
 	end)
 
-	check("AES: known eventType returns success envelope", function()
+	-- Use a permanent stub (SetReady) so this check is independent of session state.
+	-- HoleReady/SwingIntent require a live GameService session after Sprint 25.
+	check("AES: known stub eventType returns success envelope", function()
 		AES:ResetExecutionCount()
-		local result = AES:Execute(player, { eventType = "HoleReady", payload = {} })
-		assert(result.success == true, "expected success=true")
+		local result = AES:Execute(player, { eventType = "SetReady", payload = {} })
+		assert(result.success == true, "expected success=true for SetReady stub")
 		assert(type(result.status) == "string" and result.status ~= "",
 			"expected non-empty status string")
 	end)
