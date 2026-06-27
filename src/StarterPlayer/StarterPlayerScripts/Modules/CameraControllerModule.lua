@@ -17,6 +17,8 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 
+local Logger = require(ReplicatedStorage.Shared.Logger)
+
 local LocalPlayer: Player = Players.LocalPlayer
 
 local GameBus: RemoteEvent =
@@ -158,7 +160,7 @@ function CameraControllerModule:_onClientEvent(envelope: any)
 		if payload.ballId ~= MY_BALL_ID then return end
 		if typeof(payload.landingPos) ~= "Vector3" then return end
 		_landingPos = payload.landingPos :: Vector3
-		print(("[CameraController] BallResolved — landing stored at %s"):format(
+		Logger:Debug("CameraController", ("BallResolved — landing stored at %s"):format(
 			tostring(_landingPos)))
 		return
 	end
@@ -173,7 +175,7 @@ function CameraControllerModule:_onClientEvent(envelope: any)
 	local newState: string = tostring(payload.state)
 	if newState == _currentState then return end
 
-	print(("[CameraController] state → %q"):format(newState))
+	Logger:Debug("CameraController", ("state → %q"):format(newState))
 
 	-- Clear stale landing data when a new shot begins.
 	if newState == "BALL_IN_FLIGHT" then
@@ -224,7 +226,7 @@ function CameraControllerModule:Init()
 	table.insert(_connections,
 		RunService.RenderStepped:Connect(_onRenderStepped))
 
-	print(("[CameraController] ready (player: %s)"):format(LocalPlayer.Name))
+	Logger:Info("CameraController", ("ready (player: %s)"):format(LocalPlayer.Name))
 end
 
 function CameraControllerModule:Destroy()

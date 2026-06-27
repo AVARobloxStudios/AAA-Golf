@@ -17,6 +17,8 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Logger = require(ReplicatedStorage.Shared.Logger)
+
 local LocalPlayer: Player = Players.LocalPlayer
 
 local GameBus: RemoteEvent =
@@ -191,7 +193,7 @@ function PowerMeterControllerModule:_onClientEvent(envelope: any)
 			_charging = false
 		end
 
-		print(("[PowerMeterController] state → %q | visible=%s"):format(
+		Logger:Debug("PowerMeterController", ("state → %q | visible=%s"):format(
 			newState, tostring(_visible)))
 		_updatePowerUI()
 	end
@@ -264,10 +266,10 @@ function PowerMeterControllerModule:Init()
 		end
 		_buildUI(pmFrame)
 		_updatePowerUI()
-		print("[PowerMeterController] UI ready")
+		Logger:Info("PowerMeterController", "UI ready")
 	end)
 
-	print(("[PowerMeterController] ready (player: %s)"):format(LocalPlayer.Name))
+	Logger:Info("PowerMeterController", ("ready (player: %s)"):format(LocalPlayer.Name))
 end
 
 function PowerMeterControllerModule:Update(_dt: number) end

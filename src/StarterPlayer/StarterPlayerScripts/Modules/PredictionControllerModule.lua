@@ -12,6 +12,8 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 
+local Logger = require(ReplicatedStorage.Shared.Logger)
+
 local LocalPlayer: Player = Players.LocalPlayer
 
 local BallPositionStream: UnreliableRemoteEvent =
@@ -106,7 +108,7 @@ function PredictionControllerModule:_onBallPositionUpdate(payload: any)
 		receivedAt = os.clock(),
 	}
 
-	print(("[PredictionController] BallPositionStream | ballId=%s pos=%s vel=%s"):format(
+	Logger:Debug("PredictionController", ("BallPositionStream | ballId=%s pos=%s vel=%s"):format(
 		ballId, tostring(pos), tostring(vel)))
 end
 
@@ -121,7 +123,7 @@ function PredictionControllerModule:_onBallResolved(payload: any)
 	local landingPos  = payload.landingPos
 	local surface     = payload.landingSurface
 
-	print(("[PredictionController] BallResolved | ballId=%s landingPos=%s surface=%s"):format(
+	Logger:Debug("PredictionController", ("BallResolved | ballId=%s landingPos=%s surface=%s"):format(
 		ballId,
 		if typeof(landingPos) == "Vector3" then tostring(landingPos) else "?",
 		if type(surface) == "string" then surface else "?"
@@ -166,7 +168,7 @@ function PredictionControllerModule:Init()
 	table.insert(_connections,
 		RunService.RenderStepped:Connect(_onRenderStepped))
 
-	print(("[PredictionController] ready (player: %s)"):format(LocalPlayer.Name))
+	Logger:Info("PredictionController", ("ready (player: %s)"):format(LocalPlayer.Name))
 end
 
 function PredictionControllerModule:Destroy()

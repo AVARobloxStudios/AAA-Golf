@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint6ClientTest — TEMPORARY client smoke test for Sprint 6 controllers.
 -- DELETE this file after Sprint 6 sign-off.
 --
@@ -305,4 +306,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 6 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

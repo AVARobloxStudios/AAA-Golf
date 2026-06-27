@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint19ClientTest — LocalScript
 -- Client smoke tests for Sprint 19: GameBusBridgeController,
 -- StateSyncController, and ControllerBridgeController.
@@ -407,4 +408,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 19 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

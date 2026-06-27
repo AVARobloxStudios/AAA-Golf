@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint7ClientTest — LocalScript
 -- Client smoke tests for PredictionControllerModule (Sprint 7).
 -- Run in Play mode; all output appears in the Roblox Studio Output window.
@@ -240,4 +241,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 7 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

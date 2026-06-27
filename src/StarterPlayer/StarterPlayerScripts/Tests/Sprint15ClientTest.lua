@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint15ClientTest — LocalScript
 -- Client smoke tests for Sprint 15: LobbyController, MatchmakingController,
 -- and PartyController.
@@ -443,4 +444,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 15 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint9ClientTest — LocalScript
 -- Client smoke tests for HUDControllerModule (Sprint 9).
 -- Run in Play mode; output appears in the Roblox Studio Output window.
@@ -341,4 +342,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 9 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

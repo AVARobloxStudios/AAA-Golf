@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint17ClientTest — LocalScript
 -- Client smoke tests for Sprint 17: AudioController, VFXController,
 -- and FeedbackController.
@@ -402,4 +403,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 17 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

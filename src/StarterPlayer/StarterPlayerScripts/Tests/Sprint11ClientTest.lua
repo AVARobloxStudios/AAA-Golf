@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint11ClientTest — LocalScript
 -- Client smoke tests for Sprint 11: PowerMeterController, AimController,
 -- and ClubController.
@@ -396,4 +397,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 11 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

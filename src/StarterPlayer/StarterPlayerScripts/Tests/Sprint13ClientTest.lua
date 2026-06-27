@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint13ClientTest — LocalScript
 -- Client smoke tests for Sprint 13: InventoryController, CosmeticsController,
 -- and UnlockController.
@@ -433,4 +434,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 13 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

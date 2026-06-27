@@ -19,6 +19,8 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Logger = require(ReplicatedStorage.Shared.Logger)
+
 local LocalPlayer: Player = Players.LocalPlayer
 
 local GameBus: RemoteEvent =
@@ -224,7 +226,7 @@ function HUDControllerModule:_onClientEvent(envelope: any)
 			_statusMessage = "Round complete!"
 		end
 
-		print(("[HUDController] state → %q | visible=%s"):format(
+		Logger:Debug("HUDController", ("state → %q | visible=%s"):format(
 			newState, tostring(_visible)))
 		_updateUI()
 
@@ -246,7 +248,7 @@ function HUDControllerModule:_onClientEvent(envelope: any)
 			_xp += payload.xpDelta
 		end
 
-		print(("[HUDController] StrokeCommitted — strokes=%d par=%d coins=%d xp=%d"):format(
+		Logger:Debug("HUDController", ("StrokeCommitted — strokes=%d par=%d coins=%d xp=%d"):format(
 			_strokeCount, _par, _coins, _xp))
 		_updateUI()
 
@@ -257,7 +259,7 @@ function HUDControllerModule:_onClientEvent(envelope: any)
 		_strokeCount    = 0
 		_statusMessage  = ("Hole %d complete!"):format(completedHole)
 
-		print(("[HUDController] HoleComplete — advancing to hole %d"):format(_holeNumber))
+		Logger:Debug("HUDController", ("HoleComplete — advancing to hole %d"):format(_holeNumber))
 		_updateUI()
 
 	-- ── MatchComplete / RoundComplete ─────────────────────────────────────────
@@ -265,7 +267,7 @@ function HUDControllerModule:_onClientEvent(envelope: any)
 		_visible       = true
 		_statusMessage = "Round complete! Great game!"
 
-		print(("[HUDController] %s"):format(eventType))
+		Logger:Debug("HUDController", eventType)
 		_updateUI()
 	end
 end
@@ -322,10 +324,10 @@ function HUDControllerModule:Init()
 		_hudGui = hud :: ScreenGui
 		_setupUI(hud :: ScreenGui)
 		_updateUI()
-		print("[HUDController] UI elements created and synced")
+		Logger:Info("HUDController", "UI elements created and synced")
 	end)
 
-	print(("[HUDController] ready (player: %s)"):format(LocalPlayer.Name))
+	Logger:Info("HUDController", ("ready (player: %s)"):format(LocalPlayer.Name))
 end
 
 function HUDControllerModule:Destroy()

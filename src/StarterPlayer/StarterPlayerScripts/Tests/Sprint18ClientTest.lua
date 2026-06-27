@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint18ClientTest — LocalScript
 -- Client smoke tests for Sprint 18: NetworkController, EventRouterController,
 -- and PlayerStateController.
@@ -385,4 +386,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 18 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

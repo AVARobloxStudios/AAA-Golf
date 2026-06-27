@@ -11,6 +11,8 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService  = game:GetService("UserInputService")
 
+local Logger = require(ReplicatedStorage.Shared.Logger)
+
 local LocalPlayer: Player = Players.LocalPlayer
 
 local GameBus: RemoteEvent =
@@ -33,7 +35,7 @@ InputControllerModule.__index = InputControllerModule
 local function _fireHoleReady()
 	if _holeReadyFired then return end
 	_holeReadyFired = true
-	print(("[InputController] HoleReady → server (player: %s)"):format(LocalPlayer.Name))
+	Logger:Info("InputController", ("HoleReady → server (player: %s)"):format(LocalPlayer.Name))
 	GameBus:FireServer({
 		eventType = "HoleReady",
 		payload   = {},
@@ -55,7 +57,7 @@ function InputControllerModule:_onClientEvent(envelope: any)
 
 	local newState: string = tostring(payload.state)
 	_currentState = newState
-	print(("[InputController] state → %q"):format(newState))
+	Logger:Debug("InputController", ("state → %q"):format(newState))
 
 	-- Re-arm the debounce each time we enter TEE_OFF (once per shot/hole).
 	if newState == "TEE_OFF" then
@@ -107,7 +109,7 @@ function InputControllerModule:Init()
 		InputControllerModule:_onInputBegan(input, gameProcessed)
 	end))
 
-	print(("[InputController] ready (player: %s)"):format(LocalPlayer.Name))
+	Logger:Info("InputController", ("ready (player: %s)"):format(LocalPlayer.Name))
 end
 
 function InputControllerModule:Destroy()

@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint10ClientTest — LocalScript
 -- Client smoke tests for Sprint 10: MenuController, PauseController,
 -- SettingsController, and LoadingController.
@@ -364,4 +365,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 10 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

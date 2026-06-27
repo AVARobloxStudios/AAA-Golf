@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint20ClientTest — LocalScript
 -- Client smoke tests for Sprint 20: ClientActionController, RequestController,
 -- and ServerAckController.
@@ -410,4 +411,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 20 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

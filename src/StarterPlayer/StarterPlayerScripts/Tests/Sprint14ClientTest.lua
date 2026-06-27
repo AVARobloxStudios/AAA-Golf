@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint14ClientTest — LocalScript
 -- Client smoke tests for Sprint 14: ShopController, StorefrontController,
 -- and PurchasePreviewController.
@@ -420,4 +421,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 14 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

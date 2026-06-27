@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint16ClientTest — LocalScript
 -- Client smoke tests for Sprint 16: MobileControlsController,
 -- InputModeController, and TouchHUDController.
@@ -365,4 +366,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 16 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

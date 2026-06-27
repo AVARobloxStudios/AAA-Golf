@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint21ClientTest — LocalScript
 -- Client smoke tests for Sprint 21: GameplayActionBridgeController,
 -- MatchmakingActionBridgeController, and ShopActionBridgeController.
@@ -415,4 +416,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 21 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

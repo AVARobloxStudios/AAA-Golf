@@ -13,6 +13,8 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService  = game:GetService("UserInputService")
 
+local Logger = require(ReplicatedStorage.Shared.Logger)
+
 local LocalPlayer: Player = Players.LocalPlayer
 
 local GameBus: RemoteEvent =
@@ -64,7 +66,7 @@ local function _fireSwingIntent()
 	local aimVector = _getAimVector()
 	local clubId    = DEFAULT_CLUB_ID
 
-	print(("[SwingController] SwingIntent → server | power=%.2f clubId=%s aim=%s"):format(
+	Logger:Info("SwingController", ("SwingIntent → server | power=%.2f clubId=%s aim=%s"):format(
 		power, clubId, tostring(aimVector)))
 
 	GameBus:FireServer({
@@ -95,7 +97,7 @@ function SwingControllerModule:_onClientEvent(envelope: any)
 
 	local newState: string = tostring(payload.state)
 	_currentState = newState
-	print(("[SwingController] state → %q"):format(newState))
+	Logger:Debug("SwingController", ("state → %q"):format(newState))
 
 	if newState == "SWING" then
 		-- Re-arm for this shot: allow a fresh charge cycle.
@@ -117,7 +119,7 @@ function SwingControllerModule:_onInputBegan(input: any, gameProcessed: boolean)
 	then
 		_charging    = true
 		_chargeStart = os.clock()
-		print("[SwingController] charge started")
+		Logger:Debug("SwingController", "charge started")
 	end
 end
 
@@ -175,7 +177,7 @@ function SwingControllerModule:Init()
 		SwingControllerModule:_onInputEnded(input)
 	end))
 
-	print(("[SwingController] ready (player: %s)"):format(LocalPlayer.Name))
+	Logger:Info("SwingController", ("ready (player: %s)"):format(LocalPlayer.Name))
 end
 
 function SwingControllerModule:Destroy()

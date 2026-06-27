@@ -1,4 +1,5 @@
 --!strict
+return function()
 -- Sprint8ClientTest — LocalScript
 -- Client smoke tests for CameraControllerModule (Sprint 8).
 -- Run in Play mode; output appears in the Roblox Studio Output window.
@@ -258,4 +259,5 @@ if failed == 0 then
 	print(TAG .. " All Sprint 8 client smoke tests PASSED.")
 else
 	warn(TAG .. (" %d test(s) FAILED — see warnings above."):format(failed))
+end
 end

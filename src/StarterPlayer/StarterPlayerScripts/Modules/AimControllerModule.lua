@@ -23,6 +23,8 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Logger = require(ReplicatedStorage.Shared.Logger)
+
 local LocalPlayer: Player = Players.LocalPlayer
 
 local GameBus: RemoteEvent =
@@ -200,7 +202,7 @@ function AimControllerModule:_onClientEvent(envelope: any)
 		_gameState = newState
 		_visible   = VISIBLE_STATES[newState] == true
 
-		print(("[AimController] state → %q | visible=%s"):format(
+		Logger:Debug("AimController", ("state → %q | visible=%s"):format(
 			newState, tostring(_visible)))
 		_updateAimUI()
 	end
@@ -291,10 +293,10 @@ function AimControllerModule:Init()
 		end
 		_buildUI(aimFrame)
 		_updateAimUI()
-		print("[AimController] UI ready")
+		Logger:Info("AimController", "UI ready")
 	end)
 
-	print(("[AimController] ready (player: %s)"):format(LocalPlayer.Name))
+	Logger:Info("AimController", ("ready (player: %s)"):format(LocalPlayer.Name))
 end
 
 function AimControllerModule:Update(_dt: number) end

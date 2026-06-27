@@ -24,6 +24,8 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Logger = require(ReplicatedStorage.Shared.Logger)
+
 local LocalPlayer: Player = Players.LocalPlayer
 
 local GameBus: RemoteEvent =
@@ -308,7 +310,7 @@ function ScoreboardControllerModule:_onClientEvent(envelope: any)
 		_gameState = newState
 		_visible   = VISIBLE_STATES[newState] == true
 
-		print(("[ScoreboardController] state → %q | visible=%s"):format(
+		Logger:Debug("ScoreboardController", ("state → %q | visible=%s"):format(
 			newState, tostring(_visible)))
 		_updateScoreUI()
 	end
@@ -377,10 +379,10 @@ function ScoreboardControllerModule:Init()
 		if gridFrame  then _buildHoleGrid(gridFrame :: Frame)  end
 
 		_updateScoreUI()
-		print("[ScoreboardController] UI ready")
+		Logger:Info("ScoreboardController", "UI ready")
 	end)
 
-	print(("[ScoreboardController] ready (player: %s)"):format(LocalPlayer.Name))
+	Logger:Info("ScoreboardController", ("ready (player: %s)"):format(LocalPlayer.Name))
 end
 
 function ScoreboardControllerModule:Update(_dt: number) end

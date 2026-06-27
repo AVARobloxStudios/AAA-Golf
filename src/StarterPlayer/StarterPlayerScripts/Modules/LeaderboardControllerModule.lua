@@ -24,6 +24,8 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Logger = require(ReplicatedStorage.Shared.Logger)
+
 local LocalPlayer: Player = Players.LocalPlayer
 
 local GameBus: RemoteEvent =
@@ -243,7 +245,7 @@ function LeaderboardControllerModule:_onClientEvent(envelope: any)
 		_gameState = newState
 		_visible   = newState == "ROUND_COMPLETE"
 
-		print(("[LeaderboardController] state → %q | visible=%s"):format(
+		Logger:Debug("LeaderboardController", ("state → %q | visible=%s"):format(
 			newState, tostring(_visible)))
 		_updateLeaderboardUI()
 	end
@@ -316,10 +318,10 @@ function LeaderboardControllerModule:Init()
 
 		_buildUI(lbFrame :: Frame)
 		_updateLeaderboardUI()
-		print("[LeaderboardController] UI ready")
+		Logger:Info("LeaderboardController", "UI ready")
 	end)
 
-	print(("[LeaderboardController] ready (player: %s)"):format(LocalPlayer.Name))
+	Logger:Info("LeaderboardController", ("ready (player: %s)"):format(LocalPlayer.Name))
 end
 
 function LeaderboardControllerModule:Update(_dt: number) end
