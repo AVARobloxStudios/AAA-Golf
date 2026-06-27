@@ -11,7 +11,7 @@
 -- Run only the latest sprint (default):
 --   RUN_ALL_CLIENT_TESTS      = false
 --   RUN_LATEST_CLIENT_TEST    = true
---   LATEST_CLIENT_SPRINT      = 26    ← bump this each sprint
+--   LATEST_CLIENT_SPRINT      = 27    ← bump this each sprint
 --
 -- Run every sprint (full regression before commit):
 --   RUN_ALL_CLIENT_TESTS      = true
@@ -28,7 +28,7 @@
 
 local RUN_ALL_CLIENT_TESTS:           boolean  = false
 local RUN_LATEST_CLIENT_TEST:         boolean  = true
-local LATEST_CLIENT_SPRINT:           number   = 26    -- ← bump this each sprint
+local LATEST_CLIENT_SPRINT:           number   = 27    -- ← bump this each sprint
 local RUN_SPECIFIC_CLIENT_SPRINTS:    {number} = {}
 
 -- ── Sprint registry ───────────────────────────────────────────────────────────
@@ -54,6 +54,7 @@ local SPRINT_TESTS: {[number]: () -> ()} = {
 	[22] = require(script.Parent.Sprint22ClientTest),
 	[24] = require(script.Parent.Sprint24ClientTest),
 	[26] = require(script.Parent.Sprint26ClientTest),
+	[27] = require(script.Parent.Sprint27ClientTest),
 }
 
 -- ── Determine which sprints to run ────────────────────────────────────────────
@@ -61,7 +62,7 @@ local SPRINT_TESTS: {[number]: () -> ()} = {
 local toRun: {number} = {}
 
 if RUN_ALL_CLIENT_TESTS then
-	for i = 6, 26 do
+	for i = 6, 27 do
 		table.insert(toRun, i)
 	end
 elseif #RUN_SPECIFIC_CLIENT_SPRINTS > 0 then
