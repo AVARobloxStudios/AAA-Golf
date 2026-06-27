@@ -28,7 +28,7 @@
 
 local RUN_ALL_CLIENT_TESTS:           boolean  = false
 local RUN_LATEST_CLIENT_TEST:         boolean  = true
-local LATEST_CLIENT_SPRINT:           number   = 28    -- ← bump this each sprint
+local LATEST_CLIENT_SPRINT:           number   = 29    -- ← bump this each sprint
 local RUN_SPECIFIC_CLIENT_SPRINTS:    {number} = {}
 
 -- ── Sprint registry ───────────────────────────────────────────────────────────
@@ -56,6 +56,7 @@ local SPRINT_TESTS: {[number]: () -> ()} = {
 	[26] = require(script.Parent.Sprint26ClientTest),
 	[27] = require(script.Parent.Sprint27ClientTest),
 	[28] = require(script.Parent.Sprint28ClientTest),
+	[29] = require(script.Parent.Sprint29ClientTest),
 }
 
 -- ── Determine which sprints to run ────────────────────────────────────────────
@@ -63,7 +64,7 @@ local SPRINT_TESTS: {[number]: () -> ()} = {
 local toRun: {number} = {}
 
 if RUN_ALL_CLIENT_TESTS then
-	for i = 6, 28 do
+	for i = 6, 29 do
 		table.insert(toRun, i)
 	end
 elseif #RUN_SPECIFIC_CLIENT_SPRINTS > 0 then
