@@ -16,7 +16,8 @@
 					"HoleComplete":       { "$className": "RemoteEvent" },
 					"MatchComplete":      { "$className": "RemoteEvent" },
 					"ScoreboardUpdate":   { "$className": "RemoteEvent" },
-					"WeatherChanged":     { "$className": "RemoteEvent" }
+					"WeatherChanged":     { "$className": "RemoteEvent" },
+					"DeveloperAction":   { "$className": "RemoteEvent" }
 				},
 				"RemoteFunctions": {
 					"$className": "Folder",
