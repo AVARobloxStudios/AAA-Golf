@@ -14,8 +14,8 @@
 --     StartPlayableHole with no Workspace objects — warns, does not crash.
 --     GetState after failed start (status is set to HoleReady optimistically).
 --     SpawnPlayer with missing TeeSpawn — warns, returns false.
---     SpawnBall with no spawn point — warns, returns nil.
---     ShootBall with no ball — returns false, no crash.
+--     SpawnBall — fallback debug geometry always provides spawn point → returns Part.
+--     ShootBall — StartPlayableHole always spawns ball → returns true.
 --     CheckLanding with no ball — safe no-op.
 --     CheckCup with no cup — warns, no crash.
 --     ResetPlayer — clears state back to default.
@@ -146,21 +146,25 @@ local function runTests(player: Player)
 		assert(ok == false, "expected false when no tee position available")
 	end)
 
-	-- ── SpawnBall with no spawn point ─────────────────────────────────────────
+	-- ── SpawnBall — fallback geometry always provides a spawn point ───────────
+	-- StartPlayableHole above called _ensureDebugHole1(), which created
+	-- Workspace.Courses.Hole1 with a BallSpawn part and leaves it in place.
+	-- SpawnBall therefore always finds a valid position and returns a Part.
 
-	check("PHS: SpawnBall with no spawn point — returns nil, does not crash", function()
+	check("PHS: SpawnBall — fallback debug geometry spawns ball successfully", function()
 		local ball = PHS:SpawnBall(player)
-		assert(ball == nil, "expected nil ball when no position available")
+		assert(ball ~= nil, "expected ball Part — _ensureDebugHole1 provides BallSpawn")
+		assert((ball :: Part):IsA("BasePart"), "expected returned value to be a BasePart")
 	end)
 
-	-- ── ShootBall with no ball ────────────────────────────────────────────────
+	-- ── ShootBall — fallback ball always exists after StartPlayableHole ───────
+	-- StartPlayableHole calls SpawnBall internally; with fallback geometry in
+	-- place the ball is always created.  ShootBall should find it and return true.
 
-	check("PHS: ShootBall with no ball — returns false, does not crash", function()
-		-- Manually set state to HoleReady so ShootBall passes the state check
-		PHS:StartPlayableHole(player)  -- sets HoleReady even if sub-calls warn
+	check("PHS: ShootBall — StartPlayableHole spawns ball → shot fires and returns true", function()
+		PHS:StartPlayableHole(player)   -- resets state, creates debug geo + ball
 		local ok = PHS:ShootBall(player, Vector3.new(0, 0, -1), 60)
-		-- No ball was spawned (SpawnBall returned nil), so ShootBall returns false
-		assert(ok == false, "expected false when no active ball")
+		assert(ok == true, "expected true: fallback ball exists and state is HoleReady")
 	end)
 
 	-- ── CheckLanding with no ball ─────────────────────────────────────────────
