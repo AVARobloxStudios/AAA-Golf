@@ -1,9 +1,8 @@
 --!strict
 -- ClubController — LocalScript thin runner (Sprint 11)
--- All logic lives in ClubControllerModule so it can be required and tested
--- independently by Sprint11ClientTest.
+-- ClubControllerModule is a legacy state container (no Z/X binding, no gameplay
+-- integration).  The playable hole uses ClubManager via PlayableHoleControllerModule.
+-- Init() is intentionally NOT called here.  The module is required only so Roblox
+-- caches it; Sprint11ClientTest drives Init() itself in its test setup.
 
-local ClubControllerModule =
-	require(script.Parent.Parent.Modules.ClubControllerModule)
-
-ClubControllerModule:Init()
+local _ = require(script.Parent.Parent.Modules.ClubControllerModule)

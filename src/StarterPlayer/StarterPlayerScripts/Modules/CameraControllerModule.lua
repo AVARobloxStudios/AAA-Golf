@@ -101,9 +101,17 @@ local function _getScoreRevealCFrame(): CFrame?
 	return CFrame.lookAt(camPos, _landingPos)
 end
 
--- Applies camera type and CFrame for the given game state.
--- Guarded by workspace.CurrentCamera nil-check; gracefully skips CFrame
--- assignment if character/ball data is not yet available.
+-- Lerp speeds per state (higher = snappier transition).
+-- BALL_IN_FLIGHT is fastest so the camera keeps up with a fast-moving ball.
+-- SCORE_REVEAL is slowest for a dramatic overhead reveal.
+local CAM_LERP_SPEED: { [string]: number } = {
+	TEE_OFF        = 4.0,
+	SWING          = 6.0,
+	BALL_IN_FLIGHT = 7.5,
+	SCORE_REVEAL   = 1.8,
+}
+
+-- Sets CameraType only. RenderStepped handles smooth lerp to target — no snap.
 local function _applyCameraForState(state: string)
 	local cam = workspace.CurrentCamera
 	if not cam then return end
@@ -116,33 +124,31 @@ local function _applyCameraForState(state: string)
 		else
 			cam.CameraType = Enum.CameraType.Custom
 		end
-
-	elseif state == "TEE_OFF" or state == "SWING" then
+	else
+		-- All non-LOBBY states use Scriptable.
+		-- RenderStepped drives the smooth positional lerp each frame.
 		cam.CameraType = Enum.CameraType.Scriptable
-		local cf = _getAimCFrame()
-		if cf then cam.CFrame = cf end
-
-	elseif state == "BALL_IN_FLIGHT" then
-		cam.CameraType = Enum.CameraType.Scriptable
-		-- Initial placement; RenderStepped drives per-frame updates.
-		local cf = _getFollowBallCFrame()
-		if cf then cam.CFrame = cf end
-
-	elseif state == "SCORE_REVEAL" then
-		cam.CameraType = Enum.CameraType.Scriptable
-		local cf = _getScoreRevealCFrame()
-		if cf then cam.CFrame = cf end
 	end
 end
 
--- RenderStepped handler: only active in BALL_IN_FLIGHT, smoothly tracks the ball.
-local function _onRenderStepped(_dt: number)
-	if _currentState ~= "BALL_IN_FLIGHT" then return end
+-- RenderStepped: always running while Scriptable. Lerps cam.CFrame toward the
+-- state-specific target at a speed appropriate for each camera mode.
+local function _onRenderStepped(dt: number)
 	local cam = workspace.CurrentCamera
-	if not cam then return end
+	if not cam or cam.CameraType ~= Enum.CameraType.Scriptable then return end
 
-	local cf = _getFollowBallCFrame()
-	if cf then cam.CFrame = cf end
+	local targetCF: CFrame?
+	if _currentState == "TEE_OFF" or _currentState == "SWING" then
+		targetCF = _getAimCFrame()
+	elseif _currentState == "BALL_IN_FLIGHT" then
+		targetCF = _getFollowBallCFrame()
+	elseif _currentState == "SCORE_REVEAL" then
+		targetCF = _getScoreRevealCFrame()
+	end
+
+	if not targetCF then return end
+	local speed = CAM_LERP_SPEED[_currentState] or 4.0
+	cam.CFrame  = cam.CFrame:Lerp(targetCF :: CFrame, math.min(dt * speed, 1))
 end
 
 -- ── Semi-public: exposed for Sprint8ClientTest ───────────────────────────────

@@ -4,7 +4,8 @@
 -- Distance to Pin (top-right), Lie + Ball State (bottom-left).
 -- Call Init() once; use Set* to update individual fields.
 
-local Players = game:GetService("Players")
+local Players      = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -14,13 +15,14 @@ local GolfHUDModule = {}
 
 -- ── Private state ─────────────────────────────────────────────────────────────
 
-local _gui:          ScreenGui? = nil
-local _lblHole:      TextLabel? = nil
-local _lblStrokes:   TextLabel? = nil
-local _lblDistance:  TextLabel? = nil
-local _lblLie:       TextLabel? = nil
-local _lblState:     TextLabel? = nil
-local _puttingPanel: Frame?     = nil
+local _gui:           ScreenGui? = nil
+local _lblHole:       TextLabel? = nil
+local _lblStrokes:    TextLabel? = nil
+local _lblDistance:   TextLabel? = nil
+local _lblLie:        TextLabel? = nil
+local _lblState:      TextLabel? = nil
+local _puttingPanel:  Frame?     = nil
+local _strokesPanel:  Frame?     = nil   -- held for flash animation
 
 -- ── Build helpers ─────────────────────────────────────────────────────────────
 
@@ -88,7 +90,8 @@ function GolfHUDModule:Init()
 	-- ── Top-left: Strokes ─────────────────────────────────────────────────────
 	local spanel = _panel(gui, UDim2.new(0, 90, 0, 64), UDim2.new(0, 12, 0, 10))
 	_label(spanel, "STROKES", 10, false, Color3.fromRGB(150, 162, 172), 4, 20)
-	_lblStrokes = _label(spanel, "0", 26, true, Color3.fromRGB(255, 255, 255), 26, 32)
+	_lblStrokes   = _label(spanel, "0", 26, true, Color3.fromRGB(255, 255, 255), 26, 32)
+	_strokesPanel = spanel
 
 	-- ── Top-right: Distance to Pin ────────────────────────────────────────────
 	local dpanel = _panel(gui, UDim2.new(0, 100, 0, 64), UDim2.new(1, -112, 0, 10))
@@ -119,6 +122,15 @@ end
 
 function GolfHUDModule:SetStrokes(n: number)
 	if _lblStrokes then _lblStrokes.Text = tostring(n) end
+	-- Flash the strokes panel gold on each increment (n > 0 guards the initial 0 reset)
+	local panel = _strokesPanel
+	if panel and n > 0 then
+		panel.BackgroundColor3 = Color3.fromRGB(210, 155, 0)
+		TweenService:Create(panel,
+			TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ BackgroundColor3 = PANEL_BG }
+		):Play()
+	end
 end
 
 function GolfHUDModule:SetDistance(studs: number)
@@ -153,6 +165,7 @@ function GolfHUDModule:Destroy()
 	_lblLie       = nil
 	_lblState     = nil
 	_puttingPanel = nil
+	_strokesPanel = nil
 end
 
 return GolfHUDModule

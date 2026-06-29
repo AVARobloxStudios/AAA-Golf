@@ -4,6 +4,7 @@
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService      = game:GetService("TweenService")
 local ScoringRules      = require(ReplicatedStorage.Shared.Modules.ScoringRules)
 
 local HoleCompleteModule = {}
@@ -55,12 +56,12 @@ function HoleCompleteModule:Show(holeNum: number, par: number, strokes: number, 
 	overlay.BorderSizePixel          = 0
 	overlay.Parent                   = gui
 
-	-- Main panel
+	-- Main panel: starts below screen, springs up to center
 	local panel                      = Instance.new("Frame")
 	panel.BackgroundColor3           = Color3.fromRGB(12, 18, 28)
 	panel.BackgroundTransparency     = 0.06
 	panel.Size                       = UDim2.new(0, 340, 0, 340)
-	panel.Position                   = UDim2.new(0.5, -170, 0.5, -170)
+	panel.Position                   = UDim2.new(0.5, -170, 1.4, 0)   -- below viewport
 	panel.BorderSizePixel            = 0
 	panel.Parent                     = gui
 	local corner                     = Instance.new("UICorner")
@@ -159,6 +160,13 @@ function HoleCompleteModule:Show(holeNum: number, par: number, strokes: number, 
 
 	gui.Parent = localPlayer.PlayerGui
 	_gui       = gui
+
+	-- Spring-up entrance: panel slides from below the viewport to vertical center
+	TweenService:Create(
+		panel,
+		TweenInfo.new(0.48, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Position = UDim2.new(0.5, -170, 0.5, -170) }
+	):Play()
 end
 
 function HoleCompleteModule:Hide()

@@ -171,8 +171,7 @@ ballSpawn.CanCollide   = false
 ballSpawn.Transparency = 1
 ballSpawn.Parent       = hole1
 
--- Cup: cylinder disc, visual only — detection uses CUP_RADIUS=3.0 in PlayableHoleService.
--- Diameter 2.4 studs (radius 1.2) looks like a realistic golf hole.
+-- Cup: dark cylinder disc. Detection radius = 3.0 in PlayableHoleService.
 local cup              = Instance.new("Part")
 cup.Name               = "Cup"
 cup.Shape              = Enum.PartType.Cylinder
@@ -185,6 +184,19 @@ cup.Color              = Color3.fromRGB(10, 10, 10)
 cup.Material           = Enum.Material.SmoothPlastic
 cup.Transparency       = 0
 cup.Parent             = hole1
+
+-- Cup lip: off-white ring just outside the cup opening — improves visibility from fairway.
+local cupLip           = Instance.new("Part")
+cupLip.Name            = "CupLip"
+cupLip.Shape           = Enum.PartType.Cylinder
+cupLip.Size            = Vector3.new(0.06, 2.86, 2.86)
+cupLip.CFrame          = CFrame.new(CUP_POS + Vector3.new(0, 0.03, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+cupLip.Anchored        = true
+cupLip.CanCollide      = false
+cupLip.CastShadow      = false
+cupLip.Color           = Color3.fromRGB(230, 226, 210)
+cupLip.Material        = Enum.Material.SmoothPlastic
+cupLip.Parent          = fGreen
 
 -- ── Tee box ───────────────────────────────────────────────────────────────────
 -- Two-layer construction:
@@ -203,6 +215,13 @@ makePart("TeePlatform", Vector3.new(46, 9.5, 46),
 makePart("TeeTurf", Vector3.new(22, 0.5, 22),
 	CFrame.new(0, 2.75, 190),
 	Color3.fromRGB(100, 210, 80), Enum.Material.SmoothPlastic, fTee)
+
+-- Tee peg: small yellow cylinder prop under the ball spawn position.
+-- Center Y = BALL_POS.Y - 0.09 so the peg top is at ~BALL_POS.Y (ball rests on peg).
+local teePeg           = makePart("TeePeg", Vector3.new(0.11, 0.20, 0.11),
+	CFrame.new(BALL_POS + Vector3.new(0, -0.10, 0)),
+	Color3.fromRGB(255, 238, 110), Enum.Material.SmoothPlastic, fTee)
+teePeg.CastShadow      = false
 
 -- Red tee markers — small sphere markers resting on the tee turf surface (Y=3.0 top).
 -- Diameter 0.8 → center Y = 3.0 + 0.4 = 3.4. Positioned at the forward edge of tee box.
@@ -492,25 +511,68 @@ for i, pos in ipairs(FLOWER_POS) do
 	flower.CastShadow = false
 end
 
--- ── Ambient sound placeholders ────────────────────────────────────────────────
+-- ── Yardage markers ───────────────────────────────────────────────────────────
+-- Colored sphere discs embedded in the fairway surface.
+-- Red = 150 yd from cup (standard). White = 100 yd from cup.
+-- Positions are measured along the fairway centreline (1 stud ≈ 1 yard).
 
-local function makeAmbient(name: string, vol: number): Sound
+-- 150 yd markers: fairway corner area (≈ 150 studs from cup centreline)
+-- One on each side of the fairway (left/right of center)
+local m150L = makePart("Marker150L", Vector3.new(1.4, 0.25, 1.4),
+	CFrame.new(Vector3.new(3, 2.05, 5)),
+	Color3.fromRGB(215, 35, 35), Enum.Material.SmoothPlastic, fProps)
+m150L.Shape       = Enum.PartType.Cylinder
+m150L.CastShadow  = false
+m150L.CFrame      = m150L.CFrame * CFrame.Angles(0, 0, math.pi / 2)
+
+local m150R = makePart("Marker150R", Vector3.new(1.4, 0.25, 1.4),
+	CFrame.new(Vector3.new(52, 2.05, 5)),
+	Color3.fromRGB(215, 35, 35), Enum.Material.SmoothPlastic, fProps)
+m150R.Shape       = Enum.PartType.Cylinder
+m150R.CastShadow  = false
+m150R.CFrame      = m150R.CFrame * CFrame.Angles(0, 0, math.pi / 2)
+
+-- 100 yd markers: in the dogleg section (≈ 100 studs from cup along fairway)
+-- X≈42 Z≈−50 places them just before the bridge on the left of the dogleg
+local m100L = makePart("Marker100L", Vector3.new(1.4, 0.25, 1.4),
+	CFrame.new(Vector3.new(30, 2.05, -50)),
+	Color3.fromRGB(235, 235, 235), Enum.Material.SmoothPlastic, fProps)
+m100L.Shape       = Enum.PartType.Cylinder
+m100L.CastShadow  = false
+m100L.CFrame      = m100L.CFrame * CFrame.Angles(0, 0, math.pi / 2)
+
+local m100R = makePart("Marker100R", Vector3.new(1.4, 0.25, 1.4),
+	CFrame.new(Vector3.new(82, 2.05, -50)),
+	Color3.fromRGB(235, 235, 235), Enum.Material.SmoothPlastic, fProps)
+m100R.Shape       = Enum.PartType.Cylinder
+m100R.CastShadow  = false
+m100R.CFrame      = m100R.CFrame * CFrame.Angles(0, 0, math.pi / 2)
+
+-- ── Ambient sound placeholders ────────────────────────────────────────────────
+-- SoundIds marked below: replace with licensed audio from the Roblox Creator Store.
+-- The ambient birds ID is a publicly available Roblox library asset.
+
+local function makeAmbient(name: string, soundId: string, vol: number, looped: boolean): Sound
 	local s       = Instance.new("Sound")
 	s.Name        = name
-	s.SoundId     = "rbxassetid://0"
+	s.SoundId     = soundId
 	s.Volume      = vol
-	s.Looped      = true
+	s.Looped      = looped
 	s.RollOffMode = Enum.RollOffMode.InverseTapered
 	s.Parent      = SoundService
-	-- s:Play()   -- uncomment once SoundId is populated
+	if soundId ~= "rbxassetid://0" then
+		s:Play()
+	end
 	return s
 end
 
-makeAmbient("AmbientBirds",    0.40)
-makeAmbient("AmbientWind",     0.15)
-makeAmbient("SFX_BallImpact",  0.80)
-makeAmbient("SFX_BallLanding", 0.60)
-makeAmbient("SFX_CupDrop",     0.90)
+-- rbxassetid://9119713951 — "Summer Birds Ambience" (free Roblox library audio)
+-- Replace with any preferred bird/nature ambience if this ID changes.
+makeAmbient("AmbientBirds",    "rbxassetid://9119713951", 0.35, true)
+makeAmbient("AmbientWind",     "rbxassetid://0",          0.15, true)   -- stub: add wind SFX ID
+makeAmbient("SFX_BallImpact",  "rbxassetid://0",          0.80, false)  -- stub: triggered client-side
+makeAmbient("SFX_BallLanding", "rbxassetid://0",          0.60, false)  -- stub: triggered client-side
+makeAmbient("SFX_CupDrop",     "rbxassetid://0",          0.90, false)  -- stub: triggered client-side
 
 -- ── Done — debug object counts ────────────────────────────────────────────────
 

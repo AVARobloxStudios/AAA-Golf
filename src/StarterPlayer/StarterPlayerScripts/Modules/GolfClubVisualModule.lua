@@ -61,12 +61,57 @@ local HEAD_WELD_C0: CFrame =
 
 -- ─── Colors ───────────────────────────────────────────────────────────────────
 
-local GRIP_COLOR:  Color3 = Color3.fromRGB(42,  28,  18)   -- dark leather
-local SHAFT_COLOR: Color3 = Color3.fromRGB(192, 198, 205)  -- brushed steel
-local HEAD_COLOR:  Color3 = Color3.fromRGB(38,  42,  48)   -- dark titanium
+local GRIP_COLOR:  Color3 = Color3.fromRGB(32,  20,  12)   -- dark rubber grip
+local SHAFT_COLOR: Color3 = Color3.fromRGB(188, 196, 206)  -- brushed steel
+-- HEAD_COLOR/HEAD_SIZE/HEAD_HALF/HEAD_WELD_C0 superseded by _headProfile() below.
+
+-- ─── Per-category head geometry ───────────────────────────────────────────────
+-- Returns (headSize, headColor, headMaterial, headReflectance,
+--          headOffsetX, headOffsetZ, headAngleX, hasHosel, hasCrown, crownSize?)
+-- Category values match ClubData: Driver | Wood | Hybrid | Iron | Wedge | Putter
+local function _headProfile(category: string)
+
+	if category == "Driver" then
+		return Vector3.new(1.40, 0.85, 1.12),
+			Color3.fromRGB(34, 38, 46), Enum.Material.Metal, 0.40,
+			0.10, 0.0, 0,
+			false, true, Vector3.new(1.26, 0.07, 0.98)
+
+	elseif category == "Wood" then
+		return Vector3.new(1.15, 0.70, 0.95),
+			Color3.fromRGB(38, 42, 52), Enum.Material.Metal, 0.36,
+			0.08, 0.0, 0,
+			false, true, Vector3.new(1.04, 0.07, 0.84)
+
+	elseif category == "Hybrid" then
+		return Vector3.new(0.95, 0.55, 0.80),
+			Color3.fromRGB(46, 50, 60), Enum.Material.Metal, 0.34,
+			0.06, 0.0, math.rad(2),
+			true, false, nil
+
+	elseif category == "Wedge" then
+		return Vector3.new(0.72, 0.40, 0.58),
+			Color3.fromRGB(178, 184, 192), Enum.Material.Metal, 0.44,
+			0.04, 0.05, math.rad(4),
+			true, false, nil
+
+	elseif category == "Putter" then
+		return Vector3.new(1.12, 0.20, 0.46),
+			Color3.fromRGB(30, 32, 38), Enum.Material.Metal, 0.18,
+			0.0, 0.0, 0,
+			false, false, nil
+
+	else  -- Iron (IRON_4 through IRON_9)
+		return Vector3.new(0.78, 0.28, 0.52),
+			Color3.fromRGB(192, 198, 206), Enum.Material.Metal, 0.48,
+			0.04, 0.05, math.rad(3),
+			true, false, nil
+	end
+end
 
 -- ─── Module state ─────────────────────────────────────────────────────────────
 
+local _clubCategory:    string                = "Driver"   -- updated via SetClub()
 local _initialized:     boolean               = false
 local _hrp:             BasePart?             = nil
 local _handPart:        BasePart?             = nil
@@ -110,35 +155,107 @@ local function _weld(parent: Part, child: Part, c0: CFrame, name: string)
 	w.Parent = parent
 end
 
---- Builds the GolfClub Model with Grip (PrimaryPart), Shaft, and Head all welded together.
---- To swap in a real asset later, replace only this function.
-local function _buildClubModel(): Model
-	local model      = Instance.new("Model")
-	model.Name       = "GolfClub"
+--- Builds a GolfClub Model shaped for the given club category.
+--- Grip is PrimaryPart; Shaft, Head, and optional Hosel/Crown are welded to it.
+--- Swap in real assets later by replacing only this function.
+local function _buildClubModel(category: string): Model
+	local headSize, headColor, headMat, headRef,
+	      headOffX, headOffZ, headAngX,
+	      hasHosel, hasCrown, crownSize = _headProfile(category)
 
-	local grip  = _makePart("Grip",  GRIP_SIZE,  GRIP_COLOR)
-	local shaft = _makePart("Shaft", SHAFT_SIZE, SHAFT_COLOR)
-	local head  = _makePart("Head",  HEAD_SIZE,  HEAD_COLOR)
-	shaft.Shape = Enum.PartType.Cylinder   -- length axis = local X
+	local model   = Instance.new("Model")
+	model.Name    = "GolfClub"
 
-	grip.Parent  = model
-	shaft.Parent = model
-	head.Parent  = model
+	-- ── Grip ──────────────────────────────────────────────────────────────────
+	local grip          = _makePart("Grip", GRIP_SIZE, GRIP_COLOR)
+	grip.Reflectance    = 0.05
+	-- Grip cap: wider butt-end band for realistic proportions
+	local gripCap       = _makePart("GripCap", Vector3.new(0.27, 0.16, 0.27),
+		Color3.fromRGB(24, 14, 8))
+	gripCap.Reflectance = 0.04
+
+	-- ── Shaft ─────────────────────────────────────────────────────────────────
+	local shaft         = _makePart("Shaft", SHAFT_SIZE, SHAFT_COLOR)
+	shaft.Shape         = Enum.PartType.Cylinder
+	shaft.Material      = Enum.Material.Metal
+	shaft.Reflectance   = 0.55
+
+	-- ── Head ──────────────────────────────────────────────────────────────────
+	local headHalf    = headSize.Y / 2
+	local headCenterY = -(GRIP_HALF + SHAFT_SIZE.X + headHalf)
+
+	local head          = _makePart("Head", headSize, headColor)
+	head.Material       = headMat
+	head.Reflectance    = headRef
+
+	-- ── Parent all primary parts ──────────────────────────────────────────────
+	grip.Parent    = model
+	gripCap.Parent = model
+	shaft.Parent   = model
+	head.Parent    = model
 	model.PrimaryPart = grip
 
-	_weld(grip, shaft, SHAFT_WELD_C0, "ShaftWeld")
-	_weld(grip, head,  HEAD_WELD_C0,  "HeadWeld")
+	-- ── Welds ─────────────────────────────────────────────────────────────────
+	_weld(grip, shaft,   SHAFT_WELD_C0, "ShaftWeld")
+	_weld(grip, gripCap, CFrame.new(0, GRIP_HALF - 0.06, 0), "GripCapWeld")
+	_weld(grip, head,
+		CFrame.new(headOffX, headCenterY, headOffZ) * CFrame.Angles(headAngX, 0, 0),
+		"HeadWeld")
 
-	-- Swing trail: two attachments span the face width; enabled only during downswing
-	local att0           = Instance.new("Attachment")
-	att0.Name            = "SwingTrailAtt0"
-	att0.Position        = Vector3.new( HEAD_SIZE.X * 0.42, 0, 0)
-	att0.Parent          = head
+	-- ── Optional hosel: iron / wedge / hybrid ─────────────────────────────────
+	-- Thin neck cylinder at the shaft-to-head junction.
+	if hasHosel then
+		local hosel       = _makePart("Hosel", Vector3.new(0.26, 0.11, 0.11), SHAFT_COLOR)
+		hosel.Shape       = Enum.PartType.Cylinder
+		hosel.Material    = Enum.Material.Metal
+		hosel.Reflectance = 0.50
+		hosel.Parent      = model
+		_weld(grip, hosel,
+			CFrame.new(headOffX * 0.5, -(GRIP_HALF + SHAFT_SIZE.X) - 0.13, headOffZ * 0.3)
+			* CFrame.Angles(0, 0, -math.pi / 2),
+			"HoselWeld")
+	end
 
-	local att1           = Instance.new("Attachment")
-	att1.Name            = "SwingTrailAtt1"
-	att1.Position        = Vector3.new(-HEAD_SIZE.X * 0.42, 0, 0)
-	att1.Parent          = head
+	-- ── Optional crown: driver / wood ─────────────────────────────────────────
+	-- Flat plate on top of the head — the key visual of a modern driver.
+	if hasCrown and crownSize then
+		local cs          = crownSize :: Vector3
+		local crown       = _makePart("Crown", cs, Color3.fromRGB(26, 28, 34))
+		crown.Material    = Enum.Material.Metal
+		crown.Reflectance = 0.22
+		crown.Parent      = model
+		_weld(grip, crown,
+			CFrame.new(headOffX * 0.8, -(GRIP_HALF + SHAFT_SIZE.X) + cs.Y * 0.5, headOffZ - cs.Z * 0.04),
+			"CrownWeld")
+	end
+
+	-- ── Putter sight lines ────────────────────────────────────────────────────
+	-- Two thin white stripes on top of the blade help with aim.
+	if category == "Putter" then
+		local topY = -(GRIP_HALF + SHAFT_SIZE.X) + 0.015
+		for i, zOff in ipairs({ -0.08, 0.08 }) do
+			local sl        = _makePart("SightLine" .. i,
+				Vector3.new(0.86, 0.025, 0.045), Color3.fromRGB(230, 230, 230))
+			sl.Material     = Enum.Material.SmoothPlastic
+			sl.Reflectance  = 0.08
+			sl.Parent       = model
+			_weld(grip, sl, CFrame.new(headOffX, topY, zOff), "SightLineWeld" .. i)
+		end
+	end
+
+	-- ── Swing trail ───────────────────────────────────────────────────────────
+	-- Two attachments span the face; enabled only during downswing.
+	local trailSpan = headSize.X * 0.42
+
+	local att0       = Instance.new("Attachment")
+	att0.Name        = "SwingTrailAtt0"
+	att0.Position    = Vector3.new( trailSpan, 0, 0)
+	att0.Parent      = head
+
+	local att1       = Instance.new("Attachment")
+	att1.Name        = "SwingTrailAtt1"
+	att1.Position    = Vector3.new(-trailSpan, 0, 0)
+	att1.Parent      = head
 
 	local swingTrail         = Instance.new("Trail")
 	swingTrail.Name          = "ClubSwingTrail"
@@ -269,7 +386,7 @@ function GolfClubVisualModule:AttachToCharacter(character: Model)
 	end
 
 	local handPart = _findHandPart(character, hrp)
-	local model    = _buildClubModel()
+	local model    = _buildClubModel(_clubCategory)
 	local grip     = model.PrimaryPart :: Part
 	local motor    = _attachMotor(handPart, hrp, grip)
 
@@ -288,6 +405,31 @@ function GolfClubVisualModule:AttachToCharacter(character: Model)
 	end)
 
 	print("[GolfClubVisual] attached to " .. character.Name .. " via " .. handPart.Name)
+end
+
+--- Rebuilds the club model for a new category without touching swing state.
+--- Pass ClubData.category values: Driver | Wood | Hybrid | Iron | Wedge | Putter
+function GolfClubVisualModule:SetClub(category: string)
+	_clubCategory = category
+	if not _initialized or not _hrp or not (_hrp :: BasePart).Parent then return end
+	local handPart = _handPart
+	if not handPart or not (handPart :: BasePart).Parent then return end
+	-- Destroy existing model (keeps Motor6D parent alive long enough to nil _motor first)
+	if _motor     and _motor.Parent     then _motor:Destroy() end
+	if _clubModel and _clubModel.Parent then _clubModel:Destroy() end
+	_motor     = nil
+	_clubModel = nil
+	_clubTrail = nil
+	-- Rebuild for new category
+	local hrp   = _hrp :: BasePart
+	local model = _buildClubModel(_clubCategory)
+	local grip  = model.PrimaryPart :: Part
+	local motor = _attachMotor(handPart :: BasePart, hrp, grip)
+	model.Parent = hrp.Parent   -- the character Model
+	_motor     = motor
+	_clubModel = model
+	local trailInst = model:FindFirstChild("ClubSwingTrail", true)
+	_clubTrail = if trailInst and trailInst:IsA("Trail") then trailInst :: Trail else nil
 end
 
 function GolfClubVisualModule:Detach()
@@ -398,7 +540,14 @@ function GolfClubVisualModule:Update(dt: number)
 	if isActive then
 		motor.C0 = targetC0
 	else
-		motor.C0 = motor.C0:Lerp(targetC0, math.min(dt * 7, 1))
+		-- Idle sway: gentle sine-wave oscillation at address makes the club feel alive.
+		local t         = tick()
+		local swayYaw   = math.sin(t * 0.65) * math.rad(1.0)
+		local swayPitch = ADDRESS_PITCH + math.sin(t * 0.45) * math.rad(0.8)
+		local swayCF    = CFrame.new(BASE_OFFSET_X, BASE_OFFSET_Y, BASE_OFFSET_Z)
+			* CFrame.Angles(swayPitch, swayYaw, 0)
+		local idleC0    = (handPart :: BasePart).CFrame:Inverse() * hrp.CFrame * swayCF
+		motor.C0        = motor.C0:Lerp(idleC0, math.min(dt * 4.5, 1))
 	end
 end
 

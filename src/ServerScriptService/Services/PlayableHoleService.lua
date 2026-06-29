@@ -703,6 +703,7 @@ function PlayableHoleService:ShootBall(player: Player, swingResultOrDir: any, po
 			clubId = srC["clubId"] :: string
 		end
 	end
+	print("[ClubPipeline] server using clubId=" .. clubId)
 
 	local clubDef = ClubData.GetClub(clubId)
 

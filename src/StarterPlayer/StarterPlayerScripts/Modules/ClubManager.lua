@@ -87,7 +87,8 @@ function ClubManager:CyclePrev()
 	if _locked then return end
 	_index = ((_index - 2) % #SEQUENCE) + 1
 	local def = ClubData.GetClub(SEQUENCE[_index])
-	print("[Club] " .. (if def then def.displayName else SEQUENCE[_index]))
+	print("[ClubPipeline] input selected=" .. SEQUENCE[_index]
+		.. "  (" .. (if def then def.displayName else "?") .. ")")
 	_notify()
 end
 
@@ -96,7 +97,8 @@ function ClubManager:CycleNext()
 	if _locked then return end
 	_index = (_index % #SEQUENCE) + 1
 	local def = ClubData.GetClub(SEQUENCE[_index])
-	print("[Club] " .. (if def then def.displayName else SEQUENCE[_index]))
+	print("[ClubPipeline] input selected=" .. SEQUENCE[_index]
+		.. "  (" .. (if def then def.displayName else "?") .. ")")
 	_notify()
 end
 
