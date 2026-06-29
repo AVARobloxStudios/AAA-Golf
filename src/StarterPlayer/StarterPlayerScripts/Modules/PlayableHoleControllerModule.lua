@@ -48,6 +48,10 @@ local ClubHUDModule               = require(script.Parent.ClubHUDModule)
 local SwingFeedbackHUDModule      = require(script.Parent.SwingFeedbackHUDModule)
 -- Milestone 5: landing prediction + lie-aware dev HUD
 local LieModifier                 = require(ReplicatedStorage.Shared.Modules.LieModifier)
+-- Milestone 2 polish: real-time power meter reads raw swing input state
+local SwingInputControllerModule  = require(script.Parent.SwingInputControllerModule)
+-- Milestone 2B: centralized SFX playback (stubs are silent, no errors)
+local SFXPlayer                   = require(script.Parent.SFXPlayer)
 
 local LocalPlayer: Player = Players.LocalPlayer
 
@@ -104,6 +108,12 @@ local _lblDevDist:  TextLabel? = nil
 local _lblDevCarry: TextLabel? = nil
 local _lblDevCam:   TextLabel? = nil
 local _lblDevPutt:  TextLabel? = nil
+-- Milestone 2 polish: swing power meter (shows during addressed state)
+local _swingMeterGui:  ScreenGui?            = nil
+local _swingMeterBar:  Frame?               = nil
+local _swingMeterPct:  TextLabel?           = nil
+local _swingMeterConn: RBXScriptConnection? = nil
+local POWER_METER_MAX_PX: number            = 260   -- mirrors SwingAnalyzerModule.MAX_BACKSWING_PIXELS
 
 local HOLE_NUM: number = 1
 local HOLE_PAR: number = 4
@@ -468,6 +478,20 @@ local function _updateDevHUD()
 	end
 end
 
+-- Immediately push the current ClubManager selection to HUD, visual, and dev HUD.
+-- Called directly from Z/X InputBegan so the update is synchronous (not deferred via
+-- task.spawn like OnChanged callbacks).
+local function _syncSelectedClub()
+	local clubId  = ClubManager:GetCurrentClubId()
+	local clubDef = ClubManager:GetCurrentClub()
+	if clubDef then
+		ClubHUDModule:SetClub(clubDef)
+		GolfClubVisualModule:SetClub(clubDef.category)
+	end
+	_updateDevHUD()
+	print("[ClubPipeline] synced clubId=" .. clubId)
+end
+
 local function _buildDevHUD()
 	local playerGui: PlayerGui = LocalPlayer.PlayerGui
 	if _devGui and _devGui.Parent then _devGui:Destroy() end
@@ -521,7 +545,7 @@ local function _buildDevHUD()
 	_lblDevCam   = makeRow("Cam: Follow",       160, false, DIM)
 	_lblDevPutt  = makeRow("Putting: No",       182, false, W)
 	_lblState    = makeRow("State: Idle | 0",   204, false, DIM)
-	makeRow("Z/X=Club  E=Addr  F=Start  R=Reset", 226, false, Color3.fromRGB(100, 100, 110))
+	makeRow("Z/X=Club  E=Addr  F=Start  R=Reset  V=DevHUD", 226, false, Color3.fromRGB(100, 100, 110))
 
 	-- Impact quality feedback — centre-screen, invisible until shot fires
 	local feedLbl                    = Instance.new("TextLabel")
@@ -540,6 +564,182 @@ local function _buildDevHUD()
 
 	screenGui.Parent = LocalPlayer.PlayerGui
 	_devGui = screenGui
+end
+
+-- ── Impact / landing VFX ──────────────────────────────────────────────────────
+-- Brief dirt-and-grass particle burst spawned at the ball position on impact.
+-- On landing, a smaller dust puff marks where the ball first touches down.
+-- Parts are invisible anchors; Debris cleans them up after the emitter expires.
+
+local function _spawnImpactVFX(position: Vector3)
+	local part = Instance.new("Part")
+	part.Anchored     = true
+	part.CanCollide   = false
+	part.Transparency = 1
+	part.Size         = Vector3.new(0.1, 0.1, 0.1)
+	part.CFrame       = CFrame.new(position)
+	part.Parent       = Workspace
+
+	local emitter               = Instance.new("ParticleEmitter")
+	emitter.Color               = ColorSequence.new({
+		ColorSequenceKeypoint.new(0,    Color3.fromRGB(118, 93, 40)),
+		ColorSequenceKeypoint.new(0.45, Color3.fromRGB(88, 148, 50)),
+		ColorSequenceKeypoint.new(1,    Color3.fromRGB(155, 130, 75)),
+	})
+	emitter.Transparency        = NumberSequence.new({
+		NumberSequenceKeypoint.new(0,    0.05),
+		NumberSequenceKeypoint.new(0.55, 0.40),
+		NumberSequenceKeypoint.new(1,    1.00),
+	})
+	emitter.LightEmission       = 0.08
+	emitter.Size                = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.28),
+		NumberSequenceKeypoint.new(1, 0.04),
+	})
+	emitter.SpreadAngle         = Vector2.new(55, 55)
+	emitter.Speed               = NumberRange.new(7, 18)
+	emitter.Lifetime            = NumberRange.new(0.30, 0.55)
+	emitter.Rate                = 0
+	emitter.Rotation            = NumberRange.new(0, 360)
+	emitter.RotSpeed            = NumberRange.new(-30, 30)
+	emitter.Parent              = part
+	emitter:Emit(12)
+
+	Debris:AddItem(part, 1.2)
+end
+
+local function _spawnLandingVFX(position: Vector3)
+	local part = Instance.new("Part")
+	part.Anchored     = true
+	part.CanCollide   = false
+	part.Transparency = 1
+	part.Size         = Vector3.new(0.1, 0.1, 0.1)
+	part.CFrame       = CFrame.new(position)
+	part.Parent       = Workspace
+
+	local emitter               = Instance.new("ParticleEmitter")
+	emitter.Color               = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(105, 82, 38)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(138, 115, 70)),
+	})
+	emitter.Transparency        = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.10),
+		NumberSequenceKeypoint.new(1, 1.00),
+	})
+	emitter.Size                = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.20),
+		NumberSequenceKeypoint.new(1, 0.02),
+	})
+	emitter.SpreadAngle         = Vector2.new(35, 35)
+	emitter.Speed               = NumberRange.new(4, 10)
+	emitter.Lifetime            = NumberRange.new(0.20, 0.40)
+	emitter.Rate                = 0
+	emitter.Parent              = part
+	emitter:Emit(6)
+
+	Debris:AddItem(part, 0.8)
+end
+
+-- ── Swing power meter ─────────────────────────────────────────────────────────
+-- Appears bottom-center while the player is addressed (before the swing fires).
+-- Bar fills green→yellow→red as backswing drag increases.
+
+local function _hideSwingMeter()
+	if _swingMeterConn then _swingMeterConn:Disconnect(); _swingMeterConn = nil end
+	if _swingMeterGui and _swingMeterGui.Parent then _swingMeterGui:Destroy() end
+	_swingMeterGui  = nil
+	_swingMeterBar  = nil
+	_swingMeterPct  = nil
+end
+
+local function _showSwingMeter()
+	_hideSwingMeter()
+
+	local sg          = Instance.new("ScreenGui")
+	sg.Name           = "SwingPowerMeter"
+	sg.ResetOnSpawn   = false
+	sg.DisplayOrder   = 101
+	sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	sg.Parent         = LocalPlayer.PlayerGui
+	_swingMeterGui    = sg
+
+	-- Power % label just above the bar
+	local pctLbl                   = Instance.new("TextLabel")
+	pctLbl.BackgroundTransparency  = 1
+	pctLbl.Size                    = UDim2.new(0, 200, 0, 28)
+	pctLbl.Position                = UDim2.new(0.5, -100, 1, -112)
+	pctLbl.AnchorPoint             = Vector2.new(0, 1)
+	pctLbl.Font                    = Enum.Font.GothamBold
+	pctLbl.TextSize                = 18
+	pctLbl.TextColor3              = Color3.fromRGB(255, 255, 255)
+	pctLbl.TextXAlignment          = Enum.TextXAlignment.Center
+	pctLbl.TextStrokeTransparency  = 0.40
+	pctLbl.TextStrokeColor3        = Color3.fromRGB(0, 0, 0)
+	pctLbl.Text                    = "0%"
+	pctLbl.Parent                  = sg
+	_swingMeterPct = pctLbl
+
+	-- Background bar track
+	local bg              = Instance.new("Frame")
+	bg.Size               = UDim2.new(0, 280, 0, 16)
+	bg.Position           = UDim2.new(0.5, -140, 1, -82)
+	bg.AnchorPoint        = Vector2.new(0, 1)
+	bg.BackgroundColor3   = Color3.fromRGB(25, 25, 35)
+	bg.BackgroundTransparency = 0.25
+	bg.BorderSizePixel    = 0
+	bg.Parent             = sg
+	local bgc             = Instance.new("UICorner")
+	bgc.CornerRadius      = UDim.new(0, 6)
+	bgc.Parent            = bg
+
+	-- Fill bar (starts at zero width)
+	local fill            = Instance.new("Frame")
+	fill.Size             = UDim2.new(0, 0, 1, 0)
+	fill.BackgroundColor3 = Color3.fromRGB(80, 210, 90)
+	fill.BorderSizePixel  = 0
+	fill.Parent           = bg
+	local fc              = Instance.new("UICorner")
+	fc.CornerRadius       = UDim.new(0, 6)
+	fc.Parent             = fill
+	_swingMeterBar = fill
+
+	-- "POWER" label below the bar
+	local captionLbl                   = Instance.new("TextLabel")
+	captionLbl.BackgroundTransparency  = 1
+	captionLbl.Size                    = UDim2.new(0, 200, 0, 18)
+	captionLbl.Position                = UDim2.new(0.5, -100, 1, -66)
+	captionLbl.AnchorPoint             = Vector2.new(0, 1)
+	captionLbl.Font                    = Enum.Font.Gotham
+	captionLbl.TextSize                = 11
+	captionLbl.TextColor3              = Color3.fromRGB(180, 180, 190)
+	captionLbl.TextXAlignment          = Enum.TextXAlignment.Center
+	captionLbl.Text                    = "POWER  ·  Drag down ↓  Release ↑"
+	captionLbl.Parent                  = sg
+
+	_swingMeterConn = RunService.RenderStepped:Connect(function()
+		local bar = _swingMeterBar
+		local pct = _swingMeterPct
+		if not bar or not pct then return end
+
+		local state   = SwingInputControllerModule:GetSwingState()
+		local phase   = state.phase
+		local power01 = 0.0
+
+		if phase == "Backswing" then
+			local delta = state.currentPosition.Y - state.startPosition.Y
+			power01 = math.clamp(delta / POWER_METER_MAX_PX, 0, 1)
+		elseif phase == "Downswing" or phase == "Released" then
+			power01 = math.clamp(state.maxBackswingDistance / POWER_METER_MAX_PX, 0, 1)
+		end
+
+		bar.Size = UDim2.new(power01, 0, 1, 0)
+		pct.Text = math.round(power01 * 100) .. "%"
+
+		-- Color gradient: green (0%) → yellow (55%) → red (100%)
+		local r: number = math.round(math.min(1, power01 * 2)    * 230)
+		local g: number = math.round(math.min(1, 2 - power01 * 2) * 200)
+		bar.BackgroundColor3 = Color3.fromRGB(r, g, 40)
+	end)
 end
 
 -- ── Landing prediction marker ─────────────────────────────────────────────────
@@ -744,6 +944,7 @@ function PlayableHoleControllerModule:Reset()
 	GolfHUDModule:SetDistance(0)
 	GolfHUDModule:SetLie("—")
 	_hideLandingMarker()
+	_hideSwingMeter()
 	_lastLie  = "Tee"
 	_lastDist = 0
 	ClubManager:SetLocked(false)
@@ -790,13 +991,13 @@ function PlayableHoleControllerModule:Init()
 	local initClub = ClubManager:GetCurrentClub()
 	if initClub then ClubHUDModule:SetClub(initClub) end
 	ClubManager:OnChanged(function()
-		local clubDef = ClubManager:GetCurrentClub()
-		if clubDef then ClubHUDModule:SetClub(clubDef) end
-		_updateDevHUD()   -- keep top-left dev HUD in sync immediately on Z/X
+		_syncSelectedClub()
 	end)
 
 	-- ── Club visual ──────────────────────────────────────────────────────────
 	GolfClubVisualModule:Init()
+	-- Sync visual module to initial club category (defaults to Driver on fresh load)
+	if initClub then GolfClubVisualModule:SetClub(initClub.category) end
 
 	local clubUpdateConn = RunService.RenderStepped:Connect(function(dt: number)
 		GolfClubVisualModule:Update(dt)
@@ -819,6 +1020,17 @@ function PlayableHoleControllerModule:Init()
 		_aimDir    = finalResult.launchDirection
 		_lastInput = "Swing"
 		_hideLandingMarker()   -- remove prediction disc the moment the ball launches
+		_hideSwingMeter()      -- remove power bar immediately on swing release
+		-- Impact VFX: brief grass/dirt burst at ball contact point
+		local impactBall = _findBall()
+		if impactBall then
+			_spawnImpactVFX(impactBall.Position)
+		end
+		-- Impact sound (stubs are silent; real IDs come from SoundConfig)
+		local impactClub = ClubManager:GetCurrentClub()
+		if impactClub then
+			SFXPlayer:PlayImpact(impactClub.category)
+		end
 		_updateDevHUD()
 
 		-- Camera kick: scale by quality and power for satisfying feel feedback
@@ -838,6 +1050,8 @@ function PlayableHoleControllerModule:Init()
 				SwingFeedbackHUDModule:SetCarryEstimate(math.round(p01 * (maxRange :: number) * cqMult))
 			end
 		end
+		local _swingClubId = ClubManager:GetCurrentClubId()
+		print("[ClubPipeline] swing payload clubId=" .. _swingClubId)
 		local swingOk, swingErr = pcall(function()
 			DeveloperAction:FireServer({
 				action      = "ShootBallSwing",
@@ -851,7 +1065,7 @@ function PlayableHoleControllerModule:Init()
 					sideSpinInput   = finalResult.sideSpinInput,
 					backSpinInput   = finalResult.backSpinInput,
 					isPutt          = finalResult.isPutt or false,
-					clubId          = ClubManager:GetCurrentClubId(),
+					clubId          = _swingClubId,
 				},
 			})
 		end)
@@ -864,11 +1078,34 @@ function PlayableHoleControllerModule:Init()
 		end
 	end)
 
-	-- ── Input: F = start, R = reset, T = teleport to ball (dev shortcut) ────────
+	-- ── Input: Z/X = club, F = start, R = reset, V = devHUD, T = teleport ────────
 	local keyConn = UserInputService.InputBegan:Connect(
 		function(input: InputObject, gameProcessed: boolean)
+			-- Diagnostic: always print so we can confirm InputBegan fires and see
+			-- whether gameProcessed is blocking Z/X.  Remove once club switching works.
+			print("[PHCM Input]", input.KeyCode.Name, "processed=", gameProcessed)
+
+			-- Z/X: club switching bypasses the gameProcessed guard.
+			-- A focused Roblox UI (chat, core scripts) sets gameProcessed=true and
+			-- would silently block club selection otherwise.
+			-- ClubManager's own InputBegan handler (connected first at Init line ~975)
+			-- already called CyclePrev/Next when gameProcessed=false, so we only call
+			-- it again here when gameProcessed=true to avoid double-cycling.
+			if input.KeyCode == Enum.KeyCode.Z then
+				if gameProcessed then ClubManager:CyclePrev() end
+				_syncSelectedClub()
+				return
+			elseif input.KeyCode == Enum.KeyCode.X then
+				if gameProcessed then ClubManager:CycleNext() end
+				_syncSelectedClub()
+				return
+			end
+
 			if gameProcessed then return end
-			if input.KeyCode == Enum.KeyCode.F then
+			if input.KeyCode == Enum.KeyCode.V then
+				-- V toggles the developer HUD overlay
+				if _devGui then _devGui.Enabled = not _devGui.Enabled end
+			elseif input.KeyCode == Enum.KeyCode.F then
 				PlayableHoleControllerModule:StartPlayableHole()
 			elseif input.KeyCode == Enum.KeyCode.R then
 				PlayableHoleControllerModule:Reset()
@@ -879,6 +1116,25 @@ function PlayableHoleControllerModule:Init()
 					print("[PlayableHole] Teleporting to ball")
 					pcall(function()
 						DeveloperAction:FireServer({ action = "TeleportToBall" })
+					end)
+					-- After the server moves the character, rebind AddressBallModule so the
+					-- E prompt appears once the player is within range.
+					-- 0.3 s covers the server round-trip + one physics frame to settle.
+					task.spawn(function()
+						task.wait(0.3)
+						if _status ~= "BallLanded" and _status ~= "HoleReady" then return end
+						print("[AddressDebug] TeleportToBall refresh address prompt")
+						AddressBallModule:Disable()
+						local refreshBall = _findBall()
+						if refreshBall then
+							AddressBallModule:Enable(refreshBall, function()
+								pcall(function()
+									DeveloperAction:FireServer({ action = "AddressBall" })
+								end)
+							end)
+						else
+							warn("[PlayableHole] TeleportToBall: ball not found — address prompt cannot rebind")
+						end
 					end)
 				else
 					print("[PlayableHole] No ball found — press F to start a hole first")
@@ -1020,8 +1276,9 @@ function PlayableHoleControllerModule:Init()
 				GolfHUDModule:SetPuttingMode(pMode2)
 				-- Lock club cycling for the duration of the swing
 				ClubManager:SetLocked(true)
-				-- Show landing prediction disc until the ball launches
+				-- Show landing prediction disc + power meter until the ball launches
 				_showLandingMarker()
+				_showSwingMeter()
 				-- After address: swing engine on, attach club
 				SwingEngineControllerModule:Start()
 				local character = LocalPlayer.Character
@@ -1055,6 +1312,7 @@ function PlayableHoleControllerModule:Init()
 
 		elseif _status == "ShotInProgress" then
 			_hideLandingMarker()
+			_hideSwingMeter()
 			ClubManager:SetLocked(true)
 			AddressBallModule:Disable()
 			-- Start ball-tracking camera immediately, then attach the HUD tracker
@@ -1070,6 +1328,13 @@ function PlayableHoleControllerModule:Init()
 
 		elseif _status == "BallLanded" then
 			_hideLandingMarker()
+			_hideSwingMeter()
+			-- Landing VFX: dust puff at ball resting position
+			local landedBall = _findBall()
+			if landedBall then
+				_spawnLandingVFX(landedBall.Position)
+				SFXPlayer:PlayLanding()
+			end
 			-- Keep tracker for 2 s so player can see where ball landed, then remove it.
 			-- Camera returns behind character (smooth ~1.2 s) → Follow mode.
 			task.delay(2.0, _destroyBallTracker)
@@ -1091,6 +1356,7 @@ function PlayableHoleControllerModule:Init()
 				PuttingModule:Deactivate()
 			end
 			GolfHUDModule:SetPuttingMode(pMode)
+			print("[AddressDebug] BallLanded rebinding address ball")
 			local ball = _findBall()
 			if ball then
 				AddressBallModule:Enable(ball, function()
@@ -1098,10 +1364,13 @@ function PlayableHoleControllerModule:Init()
 						DeveloperAction:FireServer({ action = "AddressBall" })
 					end)
 				end)
+			else
+				warn("[PlayableHole] BallLanded: ball not found — address prompt will not appear")
 			end
 
 		elseif _status == "HoleComplete" or _status == "RoundComplete" then
 			_hideLandingMarker()
+			_hideSwingMeter()
 			_destroyBallTracker()
 			_stopBallCamera(false)
 			SwingEngineControllerModule:Stop()
@@ -1131,7 +1400,7 @@ function PlayableHoleControllerModule:Init()
 		warn("[PlayableHole] DevPlayHUD build failed: " .. tostring(hudErr))
 	end
 
-	print("[PlayableHole] client ready — F=Start, Drag=Swing, Space=FaceControl, R=Reset")
+	print("[PlayableHole] client ready — F=Start, Drag=Swing, Space=FaceControl, R=Reset, V=DevHUD")
 end
 
 function PlayableHoleControllerModule:IsInitialized(): boolean
@@ -1164,6 +1433,7 @@ function PlayableHoleControllerModule:Destroy()
 	_stopBallCamera(false)
 
 	_hideLandingMarker()
+	_hideSwingMeter()
 	_lastLie  = "Tee"
 	_lastDist = 0
 

@@ -6,6 +6,7 @@
 
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
+local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local ADDRESS_RADIUS = 8   -- studs
@@ -18,21 +19,23 @@ local AddressBallModule = {}
 
 -- ── Private state ─────────────────────────────────────────────────────────────
 
-local _active:    boolean               = false
-local _ball:      Part?                 = nil
-local _onAddress: (() -> ())?           = nil
-local _pollConn:  RBXScriptConnection?  = nil
-local _inputConn: RBXScriptConnection?  = nil
-local _promptGui: ScreenGui?            = nil
-local _inRange:   boolean               = false
+local _active:      boolean               = false
+local _ball:        Part?                 = nil
+local _onAddress:   (() -> ())?           = nil
+local _pollConn:    RBXScriptConnection?  = nil
+local _inputConn:   RBXScriptConnection?  = nil
+local _promptGui:   ScreenGui?            = nil
+local _promptLbl:   TextLabel?            = nil   -- held so we can pulse it
+local _pulseTween:  Tween?               = nil   -- infinite ping-pong tween
+local _inRange:     boolean               = false
 
 -- ── Private helpers ───────────────────────────────────────────────────────────
 
 local function _destroyPrompt()
-	if _promptGui and _promptGui.Parent then
-		_promptGui:Destroy()
-	end
+	if _pulseTween  then _pulseTween:Cancel(); _pulseTween = nil end
+	if _promptGui and _promptGui.Parent then _promptGui:Destroy() end
 	_promptGui = nil
+	_promptLbl = nil
 	_inRange   = false
 end
 
@@ -70,6 +73,7 @@ local function _buildPrompt()
 
 	gui.Parent = LocalPlayer.PlayerGui
 	_promptGui = gui
+	_promptLbl = lbl
 end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
@@ -97,12 +101,36 @@ function AddressBallModule:Enable(ball: Part, onAddress: () -> ())
 		if nowInRange ~= _inRange then
 			_inRange = nowInRange
 			if _promptGui then _promptGui.Enabled = nowInRange end
+			-- Start pulse when player enters range; cancel when they leave
+			if nowInRange then
+				local lbl = _promptLbl
+				if lbl and not _pulseTween then
+					_pulseTween = TweenService:Create(
+						lbl,
+						TweenInfo.new(0.62, Enum.EasingStyle.Sine,
+							Enum.EasingDirection.InOut, -1, true),
+						{ TextTransparency = 0.30 }
+					)
+					_pulseTween:Play()
+				end
+			else
+				if _pulseTween then _pulseTween:Cancel(); _pulseTween = nil end
+				-- Restore full opacity so next enter-range starts from opaque
+				if _promptLbl then _promptLbl.TextTransparency = 0 end
+			end
 		end
 	end)
 
 	_inputConn = UserInputService.InputBegan:Connect(function(input: InputObject, gp: boolean)
 		if gp or not _active or not _inRange then return end
 		if input.KeyCode ~= Enum.KeyCode.E then return end
+		local b    = _ball
+		local char = LocalPlayer.Character
+		local hrp  = if char then char:FindFirstChild("HumanoidRootPart") else nil
+		local dist = if hrp and b
+			then math.round(((hrp :: BasePart).Position - (b :: Part).Position).Magnitude * 10) / 10
+			else -1
+		print("[AddressDebug] E pressed, distance=" .. tostring(dist))
 		local cb = _onAddress
 		AddressBallModule:Disable()
 		if cb then cb() end
