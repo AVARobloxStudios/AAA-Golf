@@ -5,9 +5,9 @@
 -- Screen space: Y increases downward. Dragging down = backswing. Up = downswing.
 
 local MIN_BACKSWING_PIXELS:       number = 40   -- min drag (px) to enter Backswing
-local DOWNSWING_DETECT_THRESHOLD: number = 15   -- px back up from peak to enter Downswing
-local CANCEL_RADIUS:              number = 28   -- EndInput within this dist of start = cancel (Backswing phase only)
-local MAX_SAMPLES:                number = 60   -- cap on sampled positions
+local DOWNSWING_DETECT_THRESHOLD: number = 22   -- px back from peak to enter Downswing (was 15; more deliberate)
+local CANCEL_RADIUS:              number = 20   -- EndInput within this dist of start = cancel (was 28; tighter)
+local MAX_SAMPLES:                number = 80   -- cap on sampled positions (was 60; smoother path data)
 
 -- ── Types ─────────────────────────────────────────────────────────────────────
 

@@ -5,11 +5,11 @@
 -- impact moment determines club face angle (negative = closed/draw, positive = open/fade).
 -- Architecture allows replacing Spacebar with another input method in a future sprint.
 
-local IDEAL_IMPACT_DELAY:  number = 0.15  -- seconds after StartFaceWindow that ideal impact occurs
-local PERFECT_WINDOW:      number = 0.08  -- |delta| ≤ this → timedPerfect=true (display only)
-local MAX_FACE_ANGLE:      number = 10.0  -- degrees maximum face deflection (±10° range)
-local FACE_SENSITIVITY:    number = 80.0  -- degrees per second of timing error (0.1s error → 8°)
-local DEFAULT_OPEN_FACE:   number = 8.0   -- right-handed open face when Spacebar is missed
+local IDEAL_IMPACT_DELAY:  number = 0.18  -- seconds after StartFaceWindow (was 0.15; more time to react)
+local PERFECT_WINDOW:      number = 0.10  -- |delta| ≤ this → timedPerfect (was 0.08; more forgiving)
+local MAX_FACE_ANGLE:      number = 7.0   -- degrees maximum face deflection (was 10; less extreme)
+local FACE_SENSITIVITY:    number = 55.0  -- degrees per second (was 80; less punishing timing errors)
+local DEFAULT_OPEN_FACE:   number = 4.0   -- open-face when Space is missed (was 8; lighter penalty)
 
 -- ── Types ─────────────────────────────────────────────────────────────────────
 

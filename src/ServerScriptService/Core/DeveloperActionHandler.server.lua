@@ -50,6 +50,14 @@ DeveloperAction.OnServerEvent:Connect(function(player: Player, payload: any)
 			warn("[DeveloperActionHandler] ShootBallSwing: missing or invalid swingResult")
 		end
 
+	elseif action == "AddressBall" then
+		-- Milestone 1: player walked to stopped ball and pressed E
+		PlayableHoleService:AddressBall(player)
+
+	elseif action == "TeleportToBall" then
+		-- Dev shortcut (T key): snap player beside ball for faster testing
+		PlayableHoleService:TeleportToBall(player)
+
 	elseif action == "Reset" then
 		PlayableHoleService:ResetPlayer(player)
 	end

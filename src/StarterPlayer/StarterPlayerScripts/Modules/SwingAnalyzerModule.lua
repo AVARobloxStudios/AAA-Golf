@@ -6,9 +6,9 @@
 -- analysis, and adds swingEnergy (power01 × tempoScore) for future club integration.
 
 local MIN_BACKSWING_PIXELS:  number = 40
-local MAX_BACKSWING_PIXELS:  number = 260
-local MAX_PATH_OFFSET_PIXELS: number = 140
-local MAX_CLUB_PATH_DEGREES: number = 15   -- max degrees left or right from path
+local MAX_BACKSWING_PIXELS:  number = 340   -- was 260; more physical drag range for full power
+local MAX_PATH_OFFSET_PIXELS: number = 160  -- was 140; wider before max path deviation
+local MAX_CLUB_PATH_DEGREES: number = 12    -- was 15; less extreme curving at max path
 
 local MIN_SHOT_POWER:        number = 35
 local MAX_SHOT_POWER:        number = 125
@@ -16,7 +16,7 @@ local MAX_SHOT_POWER:        number = 125
 local IDEAL_TEMPO_MIN:       number = 2.2
 local IDEAL_TEMPO_MAX:       number = 3.6
 
-local MAX_FACE_ANGLE:        number = 15.0
+local MAX_FACE_ANGLE:        number = 12.0  -- was 15; align with FaceControl MAX_FACE_ANGLE
 
 -- ── Types ─────────────────────────────────────────────────────────────────────
 

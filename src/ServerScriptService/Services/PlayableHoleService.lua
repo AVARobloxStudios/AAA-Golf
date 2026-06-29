@@ -38,7 +38,10 @@ local Workspace           = game:GetService("Workspace")
 local Logger       = require(ReplicatedStorage.Shared.Logger)
 local VSFS         = require(ServerScriptService.Services.VerticalSliceFlowService)
 local GameService  = require(ServerScriptService.Modules.GameService)
-local ScoringService = require(ServerScriptService.Modules.ScoringService)
+local ScoringService    = require(ServerScriptService.Modules.ScoringService)
+local BallFlightService = require(ServerScriptService.Services.BallFlightService)
+local ClubData     = require(ReplicatedStorage.Shared.Modules.ClubData)
+local LieModifier  = require(ReplicatedStorage.Shared.Modules.LieModifier)
 
 local GameBus: RemoteEvent =
 	ReplicatedStorage.Network.RemoteEvents.GameBus :: RemoteEvent
@@ -46,8 +49,11 @@ local GameBus: RemoteEvent =
 -- ── Constants ─────────────────────────────────────────────────────────────────
 
 local CUP_RADIUS:            number = 3.0   -- studs; matches GameService HOLE_IN_RADIUS
+local CUP_SINK_RADIUS:       number = 1.2   -- studs; tight cup capture during Rolling/Bouncing
+local PUTTING_RADIUS:        number = 35    -- studs; within this, activate putting mode
 local LAND_SPEED_THRESHOLD:  number = 0.5   -- studs/s below which ball is "settling"
 local LAND_TICKS_REQUIRED:   number = 15    -- consecutive ticks below threshold to confirm landed
+local DRIVER_MAX_SPEED:      number = 420   -- reference maxSpeed for per-club power scaling
 
 -- Debug geometry positions (used when Workspace.Courses.Hole1 is absent)
 local DEBUG_TEE_POS:  Vector3 = Vector3.new(0, 1,    25)   -- platform center; top surface Y=1.5
@@ -74,6 +80,7 @@ local _initialized:   boolean                   = false
 local _balls:         { [number]: Part? }        = {}
 local _states:        { [number]: DevState? }    = {}
 local _heartbeatConn: RBXScriptConnection?       = nil
+local _ballInFlight:  { [number]: boolean }      = {}   -- true while BallFlightService is simulating
 
 -- ── Module ───────────────────────────────────────────────────────────────────
 
@@ -89,18 +96,43 @@ local function _findPlayer(userId: number): Player?
 	return nil
 end
 
--- Returns the Hole1 folder from Workspace.Courses (Rojo hierarchy), or nil.
+-- Returns the Hole1 folder.
+-- Priority: SunnybrookMeadows.Hole1 (production) → Courses.Hole1 (debug fallback).
 local function _getHole1(): Instance?
+	-- SunnybrookBuilder creates Workspace.Course.Hole1 (singular "Course")
+	local course = Workspace:FindFirstChild("Course")
+	if course then
+		local h1 = (course :: Instance):FindFirstChild("Hole1")
+		if h1 then return h1 end
+	end
+	-- Legacy / debug fallback: Workspace.Courses.SunnybrookMeadows.Hole1
 	local courses = Workspace:FindFirstChild("Courses")
 	if not courses then return nil end
+	local smm = (courses :: Instance):FindFirstChild("SunnybrookMeadows")
+	if smm then
+		local h1 = smm:FindFirstChild("Hole1")
+		if h1 then return h1 end
+	end
 	return courses:FindFirstChild("Hole1")
 end
 
--- Ensures Workspace.Courses.Hole1 exists with minimal debug geometry.
--- Creates Hole1 inside the existing Courses folder (or recreates Courses if absent)
--- so pressing F always produces a playable result even without a real course built.
+-- Ensures a playable Hole1 exists.  Skips debug creation when the production
+-- SunnybrookBuilder has already populated SunnybrookMeadows.Hole1.
 local function _ensureDebugHole1(): Instance
+	local course = Workspace:FindFirstChild("Course")
+	if course then
+		local h1 = (course :: Instance):FindFirstChild("Hole1")
+		if h1 then return h1 end
+	end
 	local courses = Workspace:FindFirstChild("Courses")
+	if courses then
+		local smm = (courses :: Instance):FindFirstChild("SunnybrookMeadows")
+		if smm then
+			local h1 = smm:FindFirstChild("Hole1")
+			if h1 then return h1 end
+		end
+	end
+
 	if not courses then
 		courses        = Instance.new("Folder")
 		courses.Name   = "Courses"
@@ -113,9 +145,10 @@ local function _ensureDebugHole1(): Instance
 
 	warn("[PlayableHoleService] Workspace.Courses.Hole1 missing — auto-creating debug geometry")
 
-	hole1        = Instance.new("Folder")
-	(hole1 :: any).Name   = "Hole1"
-	hole1.Parent = courses
+	local newHole1   = Instance.new("Folder")
+	newHole1.Name    = "Hole1"
+	newHole1.Parent  = courses
+	hole1            = newHole1
 
 	-- Large floor slab so the character and ball have ground to land on
 	local floor              = Instance.new("Part")
@@ -192,17 +225,142 @@ local function _getOrCreateState(player: Player): DevState
 	return s
 end
 
--- Broadcasts a DevPlayState envelope so the client dev HUD stays in sync.
-local function _broadcast(userId: number, status: string, strokes: number)
+-- Returns the Cup BasePart position from the Hole1 hierarchy, or nil if absent.
+local function _getCupPosition(): Vector3?
+	local hole1 = _getHole1()
+	if hole1 then
+		local cup = hole1:FindFirstChild("Cup")
+		if cup and cup:IsA("BasePart") then
+			return (cup :: BasePart).Position
+		end
+	end
+	return nil
+end
+
+-- Returns horizontal distance from ball to cup (0 if cup not found).
+local function _distanceToCup(ball: Part): number
+	local cupPos = _getCupPosition()
+	if not cupPos then return 0 end
+	local bPos = ball.Position
+	return math.floor(Vector2.new(bPos.X - cupPos.X, bPos.Z - cupPos.Z).Magnitude)
+end
+
+-- Returns a lie string for the surface immediately below ball.
+-- Checks Part.Name first (SunnybrookBuilder named parts) then falls back to material.
+local function _detectLie(ball: Part): string
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { ball }
+
+	local hit = Workspace:Raycast(
+		ball.Position + Vector3.new(0, 0.5, 0),
+		Vector3.new(0, -2, 0),
+		params
+	)
+	if not hit then return "Fairway" end
+
+	local mat  = hit.Material
+	local inst = hit.Instance
+	local name = if inst then inst.Name else ""
+
+	if mat == Enum.Material.Sand or mat == Enum.Material.Sandstone then
+		return "Bunker"
+	elseif mat == Enum.Material.Water then
+		return "Water"
+	elseif mat == Enum.Material.SmoothPlastic then
+		-- Named parts set by SunnybrookBuilder (Milestone 1.95: all playable surfaces are SmoothPlastic)
+		if name == "GreenSurface" or name == "GreenFringe" then
+			return "Green"
+		elseif name == "TeeTurf" then
+			return "Tee"
+		elseif string.find(name, "Rough") then
+			return "Rough"
+		else
+			return "Fairway"  -- FairwayStraight / FairwayCorner / FairwayDogleg
+		end
+	else
+		-- Terrain grass or other: proximity-based Green detection
+		local cupPos = _getCupPosition()
+		if cupPos then
+			local d2d = Vector2.new(ball.Position.X - cupPos.X, ball.Position.Z - cupPos.Z).Magnitude
+			if d2d < 40 then return "Green" end
+		end
+		return "Fairway"
+	end
+end
+
+-- Broadcasts a DevPlayState envelope so the client HUD stays in sync.
+-- extra: optional table of additional payload fields (e.g. addressed, distance, lie).
+local function _broadcast(userId: number, status: string, strokes: number, extra: {[string]: any}?)
+	local payload: {[string]: any} = {
+		userId  = userId,
+		status  = status,
+		strokes = strokes,
+	}
+	if extra then
+		for k, v in pairs(extra) do
+			payload[k] = v
+		end
+	end
 	GameBus:FireAllClients({
 		eventType = "DevPlayState",
-		payload   = {
-			userId  = userId,
-			status  = status,
-			strokes = strokes,
-		} :: any,
+		payload   = payload :: any,
 		timestamp = os.time(),
 	})
+end
+
+-- Captures ball in cup during Rolling/Bouncing phase.
+-- Runs sink animation, broadcasts CupIn, then schedules CompleteHole.
+-- Guards against double-count via _ballInFlight mutex and status check.
+local function _handleCupIn(uid: number, ball: Part)
+	local p = _findPlayer(uid)
+	if not p then return end
+	local s = _states[uid]
+	if not s then return end
+	if s.status == "HoleComplete" or s.status == "RoundComplete" then return end
+
+	BallFlightService:AbortBall(ball)
+	_ballInFlight[uid]          = nil
+	ball.Anchored               = true
+	ball.AssemblyLinearVelocity = Vector3.zero
+
+	s.strokes += 1
+	pcall(function() ScoringService:CommitStroke(p, "cup") end)
+	pcall(function() VSFS:RecordBallLanding(p, ball.CFrame.Position) end)
+
+	local cupPos = _getCupPosition() or ball.Position
+	local sinkEnd = Vector3.new(cupPos.X, cupPos.Y - 0.35, cupPos.Z)
+
+	task.spawn(function()
+		if not ball.Parent then return end
+		local startPos = ball.Position
+		for i = 1, 8 do
+			task.wait(0.04)
+			if not ball.Parent then return end
+			local t     = i / 8
+			local easeT = t * t
+			ball.CFrame       = CFrame.new(startPos:Lerp(sinkEnd, easeT))
+			ball.Transparency = math.min(easeT * 1.3, 1.0)
+		end
+		if ball.Parent then
+			_balls[uid] = nil
+			ball:Destroy()
+		end
+	end)
+
+	local strokes = s.strokes
+	GameBus:FireAllClients({
+		eventType = "CupIn",
+		payload   = { userId = uid, strokes = strokes },
+		timestamp = os.time(),
+	})
+
+	task.delay(0.45, function()
+		local cur = _states[uid]
+		if cur and cur.status ~= "HoleComplete" and cur.status ~= "RoundComplete" then
+			PlayableHoleService:CompleteHole(p)
+		end
+	end)
 end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
@@ -255,8 +413,11 @@ function PlayableHoleService:StartPlayableHole(player: Player): boolean
 	s.slowTicks = 0
 	s.firstShot = true
 
+	local dist = if ball then _distanceToCup(ball) else 0
+	local lie  = if ball then _detectLie(ball) else "Tee"
+
 	Logger:Info("PlayableHole", ("Hole Ready for %s"):format(player.Name))
-	_broadcast(player.UserId, "HoleReady", 0)
+	_broadcast(player.UserId, "HoleReady", 0, { distance = dist, lie = lie })
 	return true
 end
 
@@ -336,16 +497,60 @@ function PlayableHoleService:SpawnBall(player: Player): Part?
 	end
 
 	local ball = Instance.new("Part")
-	ball.Name       = "DevGolfBall_" .. tostring(player.UserId)
-	ball.Size       = Vector3.new(0.42, 0.42, 0.42)
-	ball.Shape      = Enum.PartType.Ball
-	ball.BrickColor = BrickColor.new("White")
-	ball.Material   = Enum.Material.SmoothPlastic
-	ball.Anchored   = true
-	ball.CanCollide = true
-	ball.CastShadow = false
+	ball.Name         = "DevGolfBall_" .. tostring(player.UserId)
+	ball.Size         = Vector3.new(0.55, 0.55, 0.55)   -- slightly larger for visibility
+	ball.Shape        = Enum.PartType.Ball
+	ball.Color        = Color3.fromRGB(255, 255, 255)
+	ball.Material     = Enum.Material.SmoothPlastic
+	ball.Reflectance  = 0.18    -- brighter gloss for in-flight visibility
+	ball.Anchored     = true
+	ball.CanCollide   = true
+	ball.CastShadow   = true    -- soft shadow on grass
 	ball.CFrame     = CFrame.new(ballPos)
 	ball.Parent     = Workspace
+
+	-- Subtle point light so the ball is visible against dark terrain or in shadow
+	local ballLight      = Instance.new("PointLight")
+	ballLight.Brightness = 0.7
+	ballLight.Range      = 12
+	ballLight.Color      = Color3.fromRGB(255, 255, 255)
+	ballLight.Shadows    = false
+	ballLight.Parent     = ball
+
+	-- ── Ball-flight trail (enabled by BallFlightService on launch) ────────────────
+	local trailA0        = Instance.new("Attachment")
+	trailA0.Name         = "TrailAttach0"
+	trailA0.Position     = Vector3.new(0, 0.21, 0)
+	trailA0.Parent       = ball
+
+	local trailA1        = Instance.new("Attachment")
+	trailA1.Name         = "TrailAttach1"
+	trailA1.Position     = Vector3.new(0, -0.21, 0)
+	trailA1.Parent       = ball
+
+	local trail          = Instance.new("Trail")
+	trail.Name           = "BallTrail"
+	trail.Attachment0    = trailA0
+	trail.Attachment1    = trailA1
+	trail.Lifetime       = 1.4
+	trail.MinLength      = 0.05
+	trail.MaxLength      = 80
+	trail.Color          = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 210)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+	})
+	trail.Transparency   = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.0),
+		NumberSequenceKeypoint.new(0.5, 0.55),
+		NumberSequenceKeypoint.new(1, 1.0),
+	})
+	trail.WidthScale     = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	trail.Enabled        = false   -- BallFlightService:Launch enables this
+	trail.Parent         = ball
+	-- ─────────────────────────────────────────────────────────────────────────────
 
 	_balls[player.UserId] = ball
 	print(("[PlayableHoleService] SpawnBall: %s → %s"):format(player.Name, tostring(ballPos)))
@@ -377,8 +582,9 @@ function PlayableHoleService:ShootBall(player: Player, swingResultOrDir: any, po
 		return false
 	end
 
-	local finalDir:   Vector3
-	local finalPower: number
+	local finalDir:        Vector3
+	local finalPower:      number
+	local _launchQuality:  string = "Good"   -- contactQuality forwarded to client FX event
 
 	if typeof(swingResultOrDir) == "Vector3" then
 		-- ── Sprint 33 path: direction + power ────────────────────────────────
@@ -399,6 +605,7 @@ function PlayableHoleService:ShootBall(player: Player, swingResultOrDir: any, po
 			if type(sr["shotPower"]) == "number" then sr["shotPower"] :: number else 60, 1)
 		local cq: string  = if type(sr["contactQuality"]) == "string"
 			then sr["contactQuality"] :: string else "Good"
+		_launchQuality = cq
 		local shape: string = if type(sr["shotShape"]) == "string"
 			then sr["shotShape"] :: string else "Straight"
 		local carryMult: number = if type(sr["carryMultiplier"]) == "number"
@@ -406,7 +613,7 @@ function PlayableHoleService:ShootBall(player: Player, swingResultOrDir: any, po
 		local sideSpin: number = if type(sr["sideSpinInput"]) == "number"
 			then sr["sideSpinInput"] :: number else 0
 
-		-- Contact quality power multipliers
+		-- Contact quality power multipliers (must match SwingAnalyzerModule tiers)
 		local powerMult: number
 		if cq == "Perfect" then
 			powerMult = 1.00
@@ -416,6 +623,8 @@ function PlayableHoleService:ShootBall(player: Player, swingResultOrDir: any, po
 			powerMult = 0.75
 		elseif cq == "Chunk" then
 			powerMult = 0.45
+		elseif cq == "Poor" then
+			powerMult = 0.60
 		else -- Mishit
 			powerMult = 0.25
 		end
@@ -470,17 +679,185 @@ function PlayableHoleService:ShootBall(player: Player, swingResultOrDir: any, po
 		s.firstShot = false
 	end
 
-	-- Apply Roblox native physics shot
-	ball.Anchored               = false
-	ball.AssemblyLinearVelocity = finalDir * finalPower
+	-- Extract spin data for BallFlightService (re-reads table if Sprint 34 path was taken)
+	local backSpin: number  = 0.5   -- default: medium backspin
+	local sideSpin: number  = 0.0   -- default: straight
+	local isPutt:   boolean = false
+	if type(swingResultOrDir) == "table" then
+		local sr2 = swingResultOrDir :: { [string]: any }
+		if type(sr2["backSpinInput"]) == "number" then
+			backSpin = math.clamp(sr2["backSpinInput"] :: number, 0, 1)
+		end
+		if type(sr2["sideSpinInput"]) == "number" then
+			sideSpin = math.clamp(sr2["sideSpinInput"] :: number, -1, 1)
+		end
+		isPutt = sr2["isPutt"] == true
+	end
+
+	-- ── Club + Lie effects (Milestone 2) ──────────────────────────────────────────
+	-- Extract clubId sent by the client ClubManager.  Default to DRIVER / PUTTER.
+	local clubId: string = if isPutt then "PUTTER" else "DRIVER"
+	if type(swingResultOrDir) == "table" then
+		local srC = swingResultOrDir :: { [string]: any }
+		if type(srC["clubId"]) == "string" then
+			clubId = srC["clubId"] :: string
+		end
+	end
+
+	local clubDef = ClubData.GetClub(clubId)
+
+	-- Base power-mult for the contact quality (mirrors the Sprint-34 block above).
+	-- Used only to compute the forgiveness adjustment; no double-application.
+	local QUALITY_MULT: { [string]: number } = {
+		Perfect = 1.00, Good = 0.92, Thin = 0.75, Chunk = 0.45, Poor = 0.60, Mishit = 0.25,
+	}
+	local basePowerMult: number = QUALITY_MULT[_launchQuality] or 0.75
+
+	if clubDef then
+		-- 1. Scale power by club's maxSpeed relative to Driver.
+		--    Putts are skipped: PuttingModule already applied PUTT_POWER_SCALE on the client;
+		--    applying PUTTER.maxSpeed/420 (≈19%) on top would reduce distance to near-zero.
+		if not isPutt then
+			finalPower = finalPower * (clubDef.maxSpeed / DRIVER_MAX_SPEED)
+		end
+
+		-- 2. Forgiveness: reduce the effective power penalty on mishits.
+		--    forgiveness=0.82 (CavityBack) softens a Mishit much more than forgiveness=0.35 (Blade).
+		if basePowerMult < 1.0 then
+			local rawPenalty   = 1.0 - basePowerMult
+			local adjPenalty   = rawPenalty * (1.0 - clubDef.profile.forgiveness * 0.55)
+			local adjPowerMult = 1.0 - adjPenalty
+			finalPower = finalPower * (adjPowerMult / basePowerMult)
+		end
+
+		-- 3. Spin profile: Driver (spin=0.35) → low backspin; Wedges (spin=0.90) → high.
+		backSpin = math.clamp(backSpin * (0.35 + clubDef.profile.spin * 0.65), 0, 1)
+
+		-- 4. Workability: Blades (0.95) amplify shot shape; CavityBacks (0.68) dampen it.
+		sideSpin = math.clamp(sideSpin * (0.50 + clubDef.profile.workability * 0.50), -1, 1)
+	end
+
+	-- Apply lie modifiers: rough / bunker reduce power, spin, and shot accuracy.
+	local lieForShot: string = _detectLie(ball)
+	local lieMod             = LieModifier.GetModifier(lieForShot)
+	finalPower = math.max(finalPower * lieMod.power,    5)
+	backSpin   = math.clamp(backSpin * lieMod.spin,     0, 1)
+	sideSpin   = math.clamp(sideSpin * lieMod.accuracy, -1, 1)
+
+	-- Lie mishit amplification: rough / bunker increase penalty for poor contact.
+	-- Applied on top of club forgiveness; capped so result never hits zero.
+	if lieMod.mishitScale > 1.0 and basePowerMult < 1.0 then
+		local extraPenFrac = (1.0 - basePowerMult) * (lieMod.mishitScale - 1.0) * 0.55
+		finalPower = finalPower * math.max(1.0 - extraPenFrac, 0.35)
+	end
+
+	-- Per-category roll friction scale: Driver rolls out; wedges stop quickly.
+	-- Putts keep scale=1.0 so PuttingModule behaviour is unaffected.
+	local CATEGORY_ROLL_SCALE: { [string]: number } = {
+		Driver = 0.52, Wood = 0.68, Hybrid = 0.85, Iron = 1.00, Wedge = 2.10, Putter = 1.00,
+	}
+	local catRoll = CATEGORY_ROLL_SCALE[if clubDef then clubDef.category else "Iron"] or 1.0
+	local rollFricScale: number = if isPutt
+		then 1.0
+		else catRoll * lieMod.rollMult
+
+	-- Club loft; lie loftBoost adds degrees for bunker explosion feel.
+	local effectiveLoft: number? = if clubDef and not isPutt
+		then clubDef.loftDegrees + lieMod.loftBoost
+		else nil
+
+	-- Scale trail brightness/opacity by shot power so powerful drives feel heavier.
+	-- Putts skip this because BallFlightService never enables the trail for putts.
+	if not isPutt then
+		local trailPart = ball:FindFirstChild("BallTrail")
+		if trailPart and trailPart:IsA("Trail") then
+			local p = math.clamp((finalPower - 15) / 85, 0, 1)   -- 0 at power≤15, 1 at power≥100
+			;(trailPart :: Trail).LightEmission = p * 0.40        -- 0 → 0.40 glow for big shots
+			;(trailPart :: Trail).Transparency  = NumberSequence.new({
+				NumberSequenceKeypoint.new(0,   math.max(0, 0.10 - p * 0.08)),  -- head: more opaque on power
+				NumberSequenceKeypoint.new(0.4, 0.55),
+				NumberSequenceKeypoint.new(1,   1.0),
+			})
+		end
+	end
 
 	s.status    = "ShotInProgress"
 	s.slowTicks = 0
+
+	local uid = player.UserId
+	_ballInFlight[uid] = true
+
+	-- Shot debug summary — visible in Studio Output and live server console.
+	do
+		local dbgLoft  = effectiveLoft or (if isPutt then 2.0 else 10.5)
+		local dbgCarry = math.round(finalPower * 3.50 * 0.72 / 3)   -- rough yards estimate
+		print(string.format(
+			"[ShotDebug] Club=%-14s | Lie=%-10s | Power=%5.1f | BackSpin=%.2f | Loft=%4.1f° | RollScale=%.2f | Wind=0mph | CarryEst=%3dyd",
+			clubId, lieForShot, finalPower, backSpin, dbgLoft, rollFricScale, dbgCarry
+		))
+	end
+
+	BallFlightService:Launch(ball, finalDir, finalPower,
+		{ backSpin = backSpin, sideSpin = sideSpin, isPutt = isPutt,
+		  loftDeg = effectiveLoft, rollFricScale = rollFricScale },
+		{
+			onStateChange = function(phase)
+				local cur = _states[uid]
+				if not cur then return end
+				local newStatus: string
+				if phase == "Bouncing" then
+					newStatus = "BallBouncing"
+				elseif phase == "Rolling" then
+					newStatus = "BallRolling"
+				else
+					return
+				end
+				cur.status = newStatus
+				_broadcast(uid, newStatus, cur.strokes)
+			end,
+			onStopped = function(_finalPos)
+				if not _states[uid] then return end
+				local p = _findPlayer(uid)
+				if p then PlayableHoleService:CheckLanding(p) end
+			end,
+		}
+	)
+
+	-- Cup proximity monitor: captures ball during Rolling/Bouncing phases.
+	-- Polls every 50 ms; exits when _ballInFlight is cleared by landing or cup capture.
+	task.spawn(function()
+		while _ballInFlight[uid] do
+			task.wait(0.05)
+			local b = _balls[uid]
+			if not b or not b.Parent then break end
+			local phase = BallFlightService:GetPhase(b)
+			if phase == "Rolling" or phase == "Bouncing" then
+				local cupPos = _getCupPosition()
+				if cupPos then
+					local bPos  = b.Position
+					local hDist = Vector2.new(bPos.X - cupPos.X, bPos.Z - cupPos.Z).Magnitude
+					local yDiff = math.abs(bPos.Y - cupPos.Y)
+					if hDist <= CUP_SINK_RADIUS and yDiff < 2 then
+						_handleCupIn(uid, b)
+						break
+					end
+				end
+			end
+		end
+	end)
 
 	Logger:Info("PlayableHole",
 		("Shot Started for %s — power=%.1f dir=%s"):format(
 			player.Name, finalPower, tostring(finalDir)))
 	_broadcast(player.UserId, "ShotInProgress", s.strokes)
+
+	-- Tell client which contact quality fired so it can play the right launch FX.
+	GameBus:FireAllClients({
+		eventType = "ShotFired",
+		payload   = { userId = player.UserId, contactQuality = _launchQuality },
+		timestamp = os.time(),
+	})
+
 	return true
 end
 
@@ -490,12 +867,17 @@ function PlayableHoleService:CheckLanding(player: Player)
 	if not _initialized then return end
 
 	local ball = _balls[player.UserId]
-	if not ball or not ball.Parent or ball.Anchored then return end
+	if not ball or not ball.Parent then return end
+	if not _ballInFlight[player.UserId] then return end
+	_ballInFlight[player.UserId] = nil
 
 	local s = _states[player.UserId]
-	if not s or s.status ~= "ShotInProgress" then return end
+	-- Accept ShotInProgress OR the intermediate bounce/roll states that BallFlightService emits
+	local inActiveShot = s and (s.status == "ShotInProgress"
+		or s.status == "BallBouncing" or s.status == "BallRolling")
+	if not inActiveShot then return end
 
-	-- Settle the ball
+	-- Settle the ball (BallFlightService already anchors it; these are idempotent guards)
 	ball.Anchored               = true
 	ball.AssemblyLinearVelocity = Vector3.zero
 
@@ -514,12 +896,140 @@ function PlayableHoleService:CheckLanding(player: Player)
 		VSFS:RecordBallLanding(player, pos)
 	end)
 
+	local dist        = _distanceToCup(ball)
+	local lie         = _detectLie(ball)
+	local puttingMode = dist <= PUTTING_RADIUS
+
 	Logger:Info("PlayableHole",
-		("Ball Landed at %s for %s (stroke %d)"):format(tostring(pos), player.Name, s.strokes))
-	_broadcast(player.UserId, "BallLanded", s.strokes)
+		("Ball Landed at %s for %s (stroke %d) — lie=%s dist=%d putt=%s"):format(
+			tostring(pos), player.Name, s.strokes, lie, dist, tostring(puttingMode)))
+	_broadcast(player.UserId, "BallLanded", s.strokes,
+		{ distance = dist, lie = lie, puttingMode = puttingMode })
 
 	-- Automatically check if ball is in the cup
 	PlayableHoleService:CheckCup(player)
+end
+
+-- Called when the player presses E near a stopped ball.
+-- Positions the character beside the ball facing the pin, then broadcasts HoleReady
+-- with addressed=true so the client enables the swing engine.
+function PlayableHoleService:AddressBall(player: Player): boolean
+	if not _initialized then return false end
+
+	local ball = _balls[player.UserId]
+	if not ball or not ball.Parent then
+		warn("[PlayableHoleService] AddressBall: no active ball for " .. player.Name)
+		return false
+	end
+
+	local s = _states[player.UserId]
+	if not s then return false end
+	if s.status ~= "HoleReady" and s.status ~= "BallLanded" then
+		warn(("[PlayableHoleService] AddressBall: wrong state %q for %s"):format(s.status, player.Name))
+		return false
+	end
+
+	local char = player.Character
+	if not char then return false end
+	local hrp = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return false end
+
+	-- Server-side distance check to prevent trivially abusing the remote
+	if ((hrp :: BasePart).Position - ball.Position).Magnitude > 15 then
+		warn(("[PlayableHoleService] AddressBall: %s is too far from ball — ignoring"):format(player.Name))
+		return false
+	end
+
+	-- Compute facing direction (ball → cup, clamped to horizontal)
+	local ballPos   = ball.Position
+	local cupPos    = _getCupPosition()
+	local rawDir: Vector3 = if cupPos
+		then (cupPos - ballPos)
+		else Vector3.new(0, 0, -1)
+	local targetDir = Vector3.new(rawDir.X, 0, rawDir.Z)
+	if targetDir.Magnitude < 0.01 then
+		targetDir = Vector3.new(0, 0, -1)
+	else
+		targetDir = targetDir.Unit
+	end
+
+	-- Stand 1.2 studs to the right of the ball-to-target line (right-handed golfer)
+	local rightVec   = targetDir:Cross(Vector3.new(0, 1, 0)).Unit
+	local addressPos = Vector3.new(
+		ballPos.X + rightVec.X * 1.2,
+		(hrp :: BasePart).Position.Y,   -- preserve current character height
+		ballPos.Z + rightVec.Z * 1.2
+	)
+
+	-- Face toward the target
+	local yaw    = math.atan2(-targetDir.X, -targetDir.Z)
+	local charCF = CFrame.new(addressPos) * CFrame.Angles(0, yaw, 0)
+	char:PivotTo(charCF)
+
+	s.status = "HoleReady"
+
+	local dist        = _distanceToCup(ball)
+	local lie         = _detectLie(ball)
+	local puttingMode = dist <= PUTTING_RADIUS
+
+	Logger:Info("PlayableHole",
+		("AddressBall: %s beside ball — lie=%s dist=%d putt=%s"):format(
+			player.Name, lie, dist, tostring(puttingMode)))
+
+	_broadcast(player.UserId, "HoleReady", s.strokes, {
+		addressed   = true,
+		distance    = dist,
+		lie         = lie,
+		puttingMode = puttingMode,
+	})
+	return true
+end
+
+-- Dev shortcut: teleport player 3 studs beside the ball, facing the cup.
+-- Does NOT count as addressing. Player must still press E to address.
+function PlayableHoleService:TeleportToBall(player: Player): boolean
+	if not _initialized then return false end
+
+	local ball = _balls[player.UserId]
+	if not ball or not ball.Parent then
+		print(("[PlayableHoleService] TeleportToBall: no ball for %s"):format(player.Name))
+		return false
+	end
+
+	local char = player.Character
+	if not char then return false end
+
+	local ballPos = ball.CFrame.Position
+	local cupPos  = _getCupPosition() or (ballPos + Vector3.new(0, 0, -5))
+
+	-- Horizontal direction from ball toward cup
+	local rawDir  = Vector3.new(cupPos.X - ballPos.X, 0, cupPos.Z - ballPos.Z)
+	local faceDir = if rawDir.Magnitude > 0.01 then rawDir.Unit else Vector3.new(0, 0, -1)
+	-- XZ offset: 3 studs right of the ball-to-cup line
+	local rightVec     = faceDir:Cross(Vector3.new(0, 1, 0)).Unit
+	local spawnXZ      = Vector3.new(
+		ballPos.X + rightVec.X * 3,
+		0,
+		ballPos.Z + rightVec.Z * 3
+	)
+
+	-- Ground raycast from well above spawn XZ to find actual surface Y.
+	-- Starting 150 studs above ball avoids missing terrain higher than ball position.
+	local rcParams = RaycastParams.new()
+	rcParams.FilterType = Enum.RaycastFilterType.Exclude
+	rcParams.FilterDescendantsInstances = { ball, char }
+	local rayOrigin = Vector3.new(spawnXZ.X, ballPos.Y + 150, spawnXZ.Z)
+	local groundHit = workspace:Raycast(rayOrigin, Vector3.new(0, -300, 0), rcParams)
+	-- Place HumanoidRootPart 3 studs above surface (R15 hip ≈ 3 studs above feet)
+	local groundY   = if groundHit then groundHit.Position.Y else ballPos.Y
+	local spawnPos  = Vector3.new(spawnXZ.X, groundY + 3, spawnXZ.Z)
+
+	local yaw = math.atan2(-(faceDir.X), -(faceDir.Z))
+	char:PivotTo(CFrame.new(spawnPos) * CFrame.Angles(0, yaw, 0))
+
+	print(("[PlayableHoleService] TeleportToBall: %s → Y=%.1f (ground=%.1f)"):format(
+		player.Name, spawnPos.Y, groundY))
+	return true
 end
 
 -- Checks if the ball is within cup radius; if so, completes the hole.
@@ -551,7 +1061,8 @@ function PlayableHoleService:CheckCup(player: Player)
 		return
 	end
 
-	local dist = (ball.CFrame.Position - cupPos).Magnitude
+	local bPos3 = ball.CFrame.Position
+	local dist  = Vector2.new(bPos3.X - cupPos.X, bPos3.Z - cupPos.Z).Magnitude
 	if dist <= CUP_RADIUS then
 		Logger:Info("PlayableHole",
 			("Cup Reached for %s (dist=%.2f studs)"):format(player.Name, dist))
@@ -600,10 +1111,12 @@ end
 function PlayableHoleService:ResetPlayer(player: Player)
 	local ball = _balls[player.UserId]
 	if ball and ball.Parent then
+		BallFlightService:AbortBall(ball)
 		ball:Destroy()
 	end
-	_balls[player.UserId]  = nil
-	_states[player.UserId] = nil
+	_balls[player.UserId]     = nil
+	_states[player.UserId]    = nil
+	_ballInFlight[player.UserId] = nil
 
 	pcall(function() VSFS:ResetPlayer(player) end)
 
@@ -630,36 +1143,19 @@ function PlayableHoleService:Init(_deps: { [string]: any })
 	_initialized = true
 	table.clear(_balls)
 	table.clear(_states)
+	table.clear(_ballInFlight)
 
 	_heartbeatConn = RunService.Heartbeat:Connect(function(dt: number)
 		PlayableHoleService:Update(dt)
 	end)
 
 	Logger:Info("PlayableHole", "ready")
+	print("[PlayableHole] ready")
 end
 
--- Polls all active in-flight balls for landing detection.
+-- Landing detection is callback-driven via BallFlightService:Launch (onStopped).
+-- The heartbeat connection is retained for any future per-tick server polling needs.
 function PlayableHoleService:Update(_dt: number)
-	for userId, s in pairs(_states) do
-		if not s then continue end
-		if s.status ~= "ShotInProgress" then continue end
-
-		local ball = _balls[userId]
-		if not ball or not ball.Parent or ball.Anchored then continue end
-
-		local speed = ball.AssemblyLinearVelocity.Magnitude
-		if speed < LAND_SPEED_THRESHOLD then
-			s.slowTicks += 1
-			if s.slowTicks >= LAND_TICKS_REQUIRED then
-				local player = _findPlayer(userId)
-				if player then
-					PlayableHoleService:CheckLanding(player)
-				end
-			end
-		else
-			s.slowTicks = 0
-		end
-	end
 end
 
 function PlayableHoleService:Destroy()
@@ -675,6 +1171,7 @@ function PlayableHoleService:Destroy()
 	end
 	table.clear(_balls)
 	table.clear(_states)
+	table.clear(_ballInFlight)
 
 	_initialized = false
 end
