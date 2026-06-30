@@ -1085,18 +1085,16 @@ function PlayableHoleControllerModule:Init()
 			-- whether gameProcessed is blocking Z/X.  Remove once club switching works.
 			print("[PHCM Input]", input.KeyCode.Name, "processed=", gameProcessed)
 
-			-- Z/X: club switching bypasses the gameProcessed guard.
-			-- A focused Roblox UI (chat, core scripts) sets gameProcessed=true and
-			-- would silently block club selection otherwise.
-			-- ClubManager's own InputBegan handler (connected first at Init line ~975)
-			-- already called CyclePrev/Next when gameProcessed=false, so we only call
-			-- it again here when gameProcessed=true to avoid double-cycling.
+			-- Z/X: PHCM is the sole owner of club-switching input.
+			-- ClubManager:Init() no longer connects its own InputBegan handler.
+			-- We call Cycle unconditionally — gameProcessed is irrelevant here because
+			-- there is no other handler that could double-cycle.
 			if input.KeyCode == Enum.KeyCode.Z then
-				if gameProcessed then ClubManager:CyclePrev() end
+				ClubManager:CyclePrev()
 				_syncSelectedClub()
 				return
 			elseif input.KeyCode == Enum.KeyCode.X then
-				if gameProcessed then ClubManager:CycleNext() end
+				ClubManager:CycleNext()
 				_syncSelectedClub()
 				return
 			end

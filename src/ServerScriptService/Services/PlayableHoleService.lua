@@ -707,6 +707,35 @@ function PlayableHoleService:ShootBall(player: Player, swingResultOrDir: any, po
 
 	local clubDef = ClubData.GetClub(clubId)
 
+	-- ── Archetype resolution (Milestone 3.1) ──────────────────────────────────────
+	-- For Iron clubs apply the globally active archetype's multipliers.
+	-- Other categories use their base profile unchanged.
+	-- CavityBack (default) = 1.0 everywhere, so no numerical change until switched.
+	local archetype: string = "n/a"
+	local pForgiveness:  number = if clubDef then clubDef.profile.forgiveness   else 0.70
+	local pSpin:         number = if clubDef then clubDef.profile.spin          else 0.60
+	local pWorkability:  number = if clubDef then clubDef.profile.workability   else 0.60
+	local pAccuracy:     number = if clubDef then clubDef.profile.accuracy      else 0.80
+	local pDispersion:   number = if clubDef then clubDef.profile.dispersion    else 0.30
+	local pRoll:         number = if clubDef then clubDef.profile.roll          else 0.30
+	local pShotBias:     number = if clubDef then clubDef.profile.shotShapeBias else 0.00
+
+	if clubDef then
+		if clubDef.category == "Iron" then
+			archetype = tostring((ClubData :: any).ActiveArchetype)
+			local arcMods = (ClubData :: any).ArchetypeModifiers
+			local arcMod: any = arcMods and arcMods[archetype]
+			if arcMod then
+				pForgiveness = pForgiveness * (arcMod.forgiveness :: number)
+				pSpin        = pSpin        * (arcMod.spin        :: number)
+				pAccuracy    = pAccuracy    * (arcMod.accuracy    :: number)
+				pDispersion  = pDispersion  * (arcMod.dispersion  :: number)
+			end
+		elseif (clubDef :: any).ironArchetype then
+			archetype = tostring((clubDef :: any).ironArchetype)
+		end
+	end
+
 	-- Base power-mult for the contact quality (mirrors the Sprint-34 block above).
 	-- Used only to compute the forgiveness adjustment; no double-application.
 	local QUALITY_MULT: { [string]: number } = {
@@ -716,26 +745,39 @@ function PlayableHoleService:ShootBall(player: Player, swingResultOrDir: any, po
 
 	if clubDef then
 		-- 1. Scale power by club's maxSpeed relative to Driver.
-		--    Putts are skipped: PuttingModule already applied PUTT_POWER_SCALE on the client;
-		--    applying PUTTER.maxSpeed/420 (≈19%) on top would reduce distance to near-zero.
+		--    Putts skip: PuttingModule already applied PUTT_POWER_SCALE on the client.
 		if not isPutt then
 			finalPower = finalPower * (clubDef.maxSpeed / DRIVER_MAX_SPEED)
 		end
 
 		-- 2. Forgiveness: reduce the effective power penalty on mishits.
-		--    forgiveness=0.82 (CavityBack) softens a Mishit much more than forgiveness=0.35 (Blade).
+		--    Coefficient 0.40 (was 0.55) — less aggressive damage reduction so mishits still sting.
 		if basePowerMult < 1.0 then
 			local rawPenalty   = 1.0 - basePowerMult
-			local adjPenalty   = rawPenalty * (1.0 - clubDef.profile.forgiveness * 0.55)
+			local adjPenalty   = rawPenalty * (1.0 - pForgiveness * 0.40)
 			local adjPowerMult = 1.0 - adjPenalty
 			finalPower = finalPower * (adjPowerMult / basePowerMult)
 		end
 
-		-- 3. Spin profile: Driver (spin=0.35) → low backspin; Wedges (spin=0.90) → high.
-		backSpin = math.clamp(backSpin * (0.35 + clubDef.profile.spin * 0.65), 0, 1)
+		-- 3. Spin: Driver (pSpin=0.35) → low; Wedges/Blade (pSpin≥0.88) → high.
+		backSpin = math.clamp(backSpin * (0.35 + pSpin * 0.65), 0, 1)
 
-		-- 4. Workability: Blades (0.95) amplify shot shape; CavityBacks (0.68) dampen it.
-		sideSpin = math.clamp(sideSpin * (0.50 + clubDef.profile.workability * 0.50), -1, 1)
+		-- 4. Workability: amplifies intentional draw/fade.
+		sideSpin = math.clamp(sideSpin * (0.50 + pWorkability * 0.50), -1, 1)
+
+		-- 5. Shot shape bias: inherent draw/fade tendency of the club.
+		--    Driver (-0.08) pulls slightly toward draw; wedges (+0.05) drift fade.
+		if not isPutt then
+			sideSpin = math.clamp(sideSpin + pShotBias * 0.08, -1, 1)
+		end
+
+		-- 6. Dispersion: adds per-club scatter to sideSpin.
+		--    Coefficient 0.18 (was 0.28) — scatter is meaningful but doesn't overwhelm intentional shape.
+		if not isPutt then
+			local dispWidth = pDispersion * (1.0 - pAccuracy * 0.55) * 0.18
+			local scatter   = (math.random() * 2.0 - 1.0) * dispWidth
+			sideSpin = math.clamp(sideSpin + scatter, -1, 1)
+		end
 	end
 
 	-- Apply lie modifiers: rough / bunker reduce power, spin, and shot accuracy.
@@ -752,15 +794,22 @@ function PlayableHoleService:ShootBall(player: Player, swingResultOrDir: any, po
 		finalPower = finalPower * math.max(1.0 - extraPenFrac, 0.35)
 	end
 
-	-- Per-category roll friction scale: Driver rolls out; wedges stop quickly.
-	-- Putts keep scale=1.0 so PuttingModule behaviour is unaffected.
+	-- Per-category roll friction scale.
+	-- Because loft angles are preserved (driver 10°, wedge 56-62°), the driver lands nearly flat
+	-- and enters rolling at high horizontal speed — requiring MORE friction to stop in a realistic
+	-- distance. Wedges land steeply, shedding horizontal speed, so they need less friction but
+	-- naturally stop quickly due to low roll-entry speed.
+	-- rollFricScale: higher = more friction = shorter rollout.
+	-- rollProfileMult: tightened to ±5% variation (was ±17%) so profile.roll is a subtle modifier.
+	-- Putts bypass both: PuttingModule owns green physics.
 	local CATEGORY_ROLL_SCALE: { [string]: number } = {
-		Driver = 0.52, Wood = 0.68, Hybrid = 0.85, Iron = 1.00, Wedge = 2.10, Putter = 1.00,
+		Driver = 10.0, Wood = 7.0, Hybrid = 6.0, Iron = 5.0, Wedge = 3.0, Putter = 1.0,
 	}
-	local catRoll = CATEGORY_ROLL_SCALE[if clubDef then clubDef.category else "Iron"] or 1.0
+	local catRoll         = CATEGORY_ROLL_SCALE[if clubDef then clubDef.category else "Iron"] or 5.0
+	local rollProfileMult = 1.04 - pRoll * 0.12   -- maps roll=[0,1] → mult=[1.04,0.92] (±6%)
 	local rollFricScale: number = if isPutt
 		then 1.0
-		else catRoll * lieMod.rollMult
+		else catRoll * lieMod.rollMult * rollProfileMult
 
 	-- Club loft; lie loftBoost adds degrees for bunker explosion feel.
 	local effectiveLoft: number? = if clubDef and not isPutt
@@ -789,12 +838,17 @@ function PlayableHoleService:ShootBall(player: Player, swingResultOrDir: any, po
 	_ballInFlight[uid] = true
 
 	-- Shot debug summary — visible in Studio Output and live server console.
+	-- Carry estimate uses the kinematic formula: carry = v² × sin(2L) / g
+	-- This matches what BallFlightService actually produces (ignoring small drag/lift corrections).
 	do
-		local dbgLoft  = effectiveLoft or (if isPutt then 2.0 else 10.5)
-		local dbgCarry = math.round(finalPower * 3.50 * 0.72 / 3)   -- rough yards estimate
+		local dbgLoft = effectiveLoft or (if isPutt then 2.0 else 10.5)
+		local dbgSpd  = finalPower * 3.50
+		local dbgCarry = math.round(dbgSpd * dbgSpd * math.sin(math.rad(2 * dbgLoft)) / 196.2)
 		print(string.format(
-			"[ShotDebug] Club=%-14s | Lie=%-10s | Power=%5.1f | BackSpin=%.2f | Loft=%4.1f° | RollScale=%.2f | Wind=0mph | CarryEst=%3dyd",
-			clubId, lieForShot, finalPower, backSpin, dbgLoft, rollFricScale, dbgCarry
+			"[ShotDebug] %-18s %-11s Lie=%-8s Pwr=%5.1f Acc=%.2f Frg=%.2f Dsp=%.2f Rol=%.2f Spn=%.2f Loft=%4.1f° Est=%3dyd",
+			clubId, archetype, lieForShot, finalPower,
+			pAccuracy, pForgiveness, pDispersion, pRoll, backSpin,
+			dbgLoft, dbgCarry
 		))
 	end
 

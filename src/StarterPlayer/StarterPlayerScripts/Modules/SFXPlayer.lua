@@ -14,8 +14,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Defensive load: SoundConfig is a new file from Milestone 2B; if Rojo hasn't synced
 -- it yet the module would throw and break the entire client script chain.
-local _STUB_IMPACT = { Driver="rbxassetid://0", Wood="rbxassetid://0", Hybrid="rbxassetid://0",
-	Iron="rbxassetid://0", Wedge="rbxassetid://0", Putter="rbxassetid://0" }
+local _STUB_IMPACT = { Driver="", Wood="", Hybrid="", Iron="", Wedge="", Putter="" }
 local _ok, _cfg = pcall(function()
 	return require(ReplicatedStorage.Shared.Modules.SoundConfig)
 end)
@@ -23,17 +22,19 @@ if not _ok then
 	warn("[SFXPlayer] SoundConfig not found — all sounds will be silent until synced:", _cfg)
 end
 local SoundConfig: any = if _ok then _cfg else {
-	Impact = _STUB_IMPACT, BallLanding = "rbxassetid://0",
-	CupDrop = "rbxassetid://0", AmbientBirds = "rbxassetid://0", AmbientWind = "rbxassetid://0",
+	Impact = _STUB_IMPACT, BallLanding = "",
+	CupDrop = "", AmbientBirds = "", AmbientWind = "",
 }
 
 local SFXPlayer = {}
 
 local _cache: { [string]: Sound } = {}
 
--- Returns a cached Sound instance for (name, soundId). Returns nil for stubs.
+-- Returns a cached Sound instance for (name, soundId). Returns nil for stubs/empty IDs.
+-- Empty string is the canonical stub value; "rbxassetid://0" is kept as a fallback guard
+-- in case any old data arrives before a full Rojo sync.
 local function _getSound(name: string, soundId: string): Sound?
-	if soundId == "rbxassetid://0" then return nil end
+	if soundId == "" or soundId == "rbxassetid://0" then return nil end
 	local s = _cache[name]
 	if s and s.Parent then return s end
 	s          = Instance.new("Sound")

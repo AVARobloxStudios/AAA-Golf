@@ -555,12 +555,16 @@ m100R.CFrame      = m100R.CFrame * CFrame.Angles(0, 0, math.pi / 2)
 local function makeAmbient(name: string, soundId: string, vol: number, looped: boolean): Sound
 	local s       = Instance.new("Sound")
 	s.Name        = name
-	s.SoundId     = soundId
+	-- Only assign SoundId when we have a real asset; setting it to "rbxassetid://0" or ""
+	-- causes Roblox to attempt an asset load and emit a content-error in the output.
+	if soundId ~= "" and soundId ~= "rbxassetid://0" then
+		s.SoundId = soundId
+	end
 	s.Volume      = vol
 	s.Looped      = looped
 	s.RollOffMode = Enum.RollOffMode.InverseTapered
 	s.Parent      = SoundService
-	if soundId ~= "rbxassetid://0" then
+	if soundId ~= "" and soundId ~= "rbxassetid://0" then
 		s:Play()
 	end
 	return s
@@ -569,10 +573,10 @@ end
 -- rbxassetid://9119713951 — "Summer Birds Ambience" (free Roblox library audio)
 -- Replace with any preferred bird/nature ambience if this ID changes.
 makeAmbient("AmbientBirds",    "rbxassetid://9119713951", 0.35, true)
-makeAmbient("AmbientWind",     "rbxassetid://0",          0.15, true)   -- stub: add wind SFX ID
-makeAmbient("SFX_BallImpact",  "rbxassetid://0",          0.80, false)  -- stub: triggered client-side
-makeAmbient("SFX_BallLanding", "rbxassetid://0",          0.60, false)  -- stub: triggered client-side
-makeAmbient("SFX_CupDrop",     "rbxassetid://0",          0.90, false)  -- stub: triggered client-side
+makeAmbient("AmbientWind",     "",                        0.15, true)   -- stub: add wind SFX ID
+makeAmbient("SFX_BallImpact",  "",                        0.80, false)  -- stub: triggered client-side
+makeAmbient("SFX_BallLanding", "",                        0.60, false)  -- stub: triggered client-side
+makeAmbient("SFX_CupDrop",     "",                        0.90, false)  -- stub: triggered client-side
 
 -- ── Done — debug object counts ────────────────────────────────────────────────
 

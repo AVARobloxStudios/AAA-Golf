@@ -107,25 +107,19 @@ function ClubManager:OnChanged(callback: () -> ())
 	table.insert(_callbacks, callback)
 end
 
---- Wire up Z / X input. Call once from PlayableHoleControllerModule:Init().
+--- Initialise ClubManager state. Call once from PlayableHoleControllerModule:Init().
+-- Z/X input is intentionally NOT connected here.
+-- PlayableHoleControllerModule owns the Z/X InputBegan binding so it can call
+-- _syncSelectedClub() synchronously in the same frame as the key event.
+-- Having two independent InputBegan handlers for the same keys caused ordering
+-- ambiguity and silent conflicts that prevented the HUD from updating.
 function ClubManager:Init()
 	if _initialized then
-		warn("[ClubManager] Init called twice — skipping (double-registration would skip clubs by 2)")
+		warn("[ClubManager] Init called twice — skipping")
 		return
 	end
 	_initialized = true
-	print("[ClubManager] Init")
-	local keyConn = UserInputService.InputBegan:Connect(function(input: InputObject, gp: boolean)
-		if gp then return end
-		if input.KeyCode == Enum.KeyCode.Z then
-			print("[ClubManager] Z previous — locked=" .. tostring(_locked))
-			ClubManager:CyclePrev()
-		elseif input.KeyCode == Enum.KeyCode.X then
-			print("[ClubManager] X next — locked=" .. tostring(_locked))
-			ClubManager:CycleNext()
-		end
-	end)
-	table.insert(_connections, keyConn)
+	print("[ClubManager] Init — Z/X input owned by PHCM")
 end
 
 --- Disconnect all input and reset to Driver.
